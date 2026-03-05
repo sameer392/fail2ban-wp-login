@@ -211,6 +211,10 @@ if (file_exists($whitelist_conf)) {
 }
 
 $jails = ['wordpress-wp-login', 'apache-high-volume'];
+$jail_labels = [
+    'wordpress-wp-login' => ['failed' => 'Failed logins', 'failed_total' => 'Total failed logins'],
+    'apache-high-volume' => ['failed' => 'Requests in window', 'failed_total' => 'Total requests']
+];
 $jail_data = [];
 foreach ($jails as $j) {
     $jail_data[$j] = parse_jail_status($j);
@@ -258,8 +262,9 @@ $d = $jail_data[$j];
         <tr><th>Metric</th><th>Value</th></tr>
       </thead>
       <tbody>
-        <tr><td>Currently failed</td><td><?php echo htmlspecialchars($d['currently_failed']); ?></td></tr>
-        <tr><td>Total failed</td><td><?php echo htmlspecialchars($d['total_failed']); ?></td></tr>
+        <?php $lbl = $jail_labels[$j] ?? ['failed' => 'Currently failed', 'failed_total' => 'Total failed']; ?>
+        <tr><td><?php echo htmlspecialchars($lbl['failed']); ?></td><td><?php echo htmlspecialchars($d['currently_failed']); ?></td></tr>
+        <tr><td><?php echo htmlspecialchars($lbl['failed_total']); ?></td><td><?php echo htmlspecialchars($d['total_failed']); ?></td></tr>
         <tr><td>Currently banned</td><td><?php echo htmlspecialchars($d['currently_banned']); ?></td></tr>
         <tr><td>Total banned</td><td><?php echo htmlspecialchars($d['total_banned']); ?></td></tr>
       </tbody>
