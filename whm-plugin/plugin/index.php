@@ -192,8 +192,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
     }
 }
 
-WHM::header('Fail2Ban Manager', 0, 0);
-
 $ignore_conf = '/etc/fail2ban/scripts/ignore-countries.conf';
 $whitelist_conf = '/usr/share/fail2ban/whitelist-ips.conf';
 $ignore_countries = '';
@@ -220,6 +218,7 @@ foreach ($jails as $j) {
     $jail_data[$j] = parse_jail_status($j);
 }
 
+// AJAX handler must run BEFORE WHM::header() so we don't output the full page wrapper
 if (isset($_GET['ajax']) && $_GET['ajax'] === 'banned_ips' && isset($_GET['jail'])) {
     $ajail = preg_replace('/[^a-zA-Z0-9_-]/', '', $_GET['jail']);
     if (in_array($ajail, $jails)) {
@@ -245,6 +244,8 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'banned_ips' && isset($_GET['jail'
         exit;
     }
 }
+
+WHM::header('Fail2Ban Manager', 0, 0);
 
 exec('fail2ban-client status 2>/dev/null', $gen_out, $gen_ret);
 $general_status = $gen_ret === 0 ? implode("\n", array_slice($gen_out, 0, 15)) : 'fail2ban not running';
