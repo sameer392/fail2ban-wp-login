@@ -88,14 +88,14 @@ if [[ "$PURGE" == true ]]; then
       echo "      fail2ban was not installed."
    fi
    echo
-   echo "[5/5] Removing /etc/fail2ban/ and /usr/share/fail2ban-custom/..."
+   echo "[5/5] Removing /etc/fail2ban/ and /usr/share/fail2ban/ (custom config)..."
    if [[ -d /etc/fail2ban ]]; then
       rm -rf /etc/fail2ban
       echo "      /etc/fail2ban/ removed."
    fi
-   if [[ -d /usr/share/fail2ban-custom ]]; then
-      rm -rf /usr/share/fail2ban-custom
-      echo "      /usr/share/fail2ban-custom/ removed."
+   if [[ -d /usr/share/fail2ban ]]; then
+      rm -rf /usr/share/fail2ban
+      echo "      /usr/share/fail2ban/ removed."
    fi
 else
    echo "[3/4] Restarting fail2ban..."

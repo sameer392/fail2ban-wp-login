@@ -7,7 +7,7 @@
 
 set -e
 
-INSTALL_DIR="/usr/share/fail2ban-custom"
+INSTALL_DIR="/usr/share/fail2ban"
 SCRIPT_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Check root

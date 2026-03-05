@@ -7,7 +7,7 @@
 
 set -e
 
-INSTALL_DIR="/usr/share/fail2ban-custom"
+INSTALL_DIR="/usr/share/fail2ban"
 [ -d "$INSTALL_DIR" ] || INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_DIR="$INSTALL_DIR"
 

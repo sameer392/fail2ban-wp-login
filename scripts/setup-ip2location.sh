@@ -7,8 +7,8 @@ set -e
 [ "$EUID" -ne 0 ] && { echo "Run as root"; exit 1; }
 
 TOKEN="${IP2LOCATION_TOKEN:-j4lX5sxtvlmBvdki8ITEPt9zmJUraz7xHkFx64piNGMyH6ubyA1EdhAubhBtfrH3}"
-DB_DIR="${IP2LOCATION_DB_DIR:-/usr/share/GeoIP}"
-CONFIG_DIR="/etc/GeoIP"
+GEOIP_DIR="/etc/fail2ban/GeoIP"
+DB_DIR="${IP2LOCATION_DB_DIR:-$GEOIP_DIR}"
 SCRIPT_DIR="$(dirname "$0")"
 
 echo "=== IP2Location LITE DB1 Setup for fail2ban ==="
@@ -22,13 +22,13 @@ if ! command -v mmdblookup &>/dev/null; then
     }
 fi
 
-mkdir -p "$DB_DIR" "$CONFIG_DIR"
+mkdir -p "$GEOIP_DIR"
 
 # Store token for update cron (avoid hardcoding in cron script)
-if [ ! -f "$CONFIG_DIR/ip2location.conf" ]; then
-    echo "IP2LOCATION_TOKEN=$TOKEN" > "$CONFIG_DIR/ip2location.conf"
-    echo "IP2LOCATION_DB_DIR=$DB_DIR" >> "$CONFIG_DIR/ip2location.conf"
-    chmod 600 "$CONFIG_DIR/ip2location.conf"
+if [ ! -f "$GEOIP_DIR/ip2location.conf" ]; then
+    echo "IP2LOCATION_TOKEN=$TOKEN" > "$GEOIP_DIR/ip2location.conf"
+    echo "IP2LOCATION_DB_DIR=$DB_DIR" >> "$GEOIP_DIR/ip2location.conf"
+    chmod 600 "$GEOIP_DIR/ip2location.conf"
 fi
 
 echo "Downloading IP2Location LITE DB1 (MMDB)..."
@@ -79,4 +79,4 @@ rm -rf "$TMPDIR"
 echo ""
 echo "Setup complete. csf-ban.sh will use IP2Location for country lookup."
 echo "Add weekly cron for auto-updates:"
-echo "  0 3 * * 3 root [ -f /etc/GeoIP/ip2location.conf ] && . /etc/GeoIP/ip2location.conf && /etc/fail2ban/scripts/update-ip2location.sh"
+echo "  0 3 * * 3 root [ -f /etc/fail2ban/GeoIP/ip2location.conf ] && . /etc/fail2ban/GeoIP/ip2location.conf && /etc/fail2ban/scripts/update-ip2location.sh"

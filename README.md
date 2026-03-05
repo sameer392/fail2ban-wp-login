@@ -22,35 +22,35 @@ cd /root/fail2ban   # or wherever you extracted the package
 ./install.sh
 ```
 
-- Copies source to `/usr/share/fail2ban-custom/` (permanent location)
+- Copies source to `/usr/share/fail2ban/` (permanent location)
 - Installs fail2ban, deploys config to `/etc/fail2ban/`, enables the service
 - **You may remove** `/root/fail2ban` after install
 
 ### Option 2: Deploy config only (fail2ban already installed)
 
 ```bash
-/usr/share/fail2ban-custom/setup.sh
+/usr/share/fail2ban/setup.sh
 ```
 
-Copies filter and jail from `/usr/share/fail2ban-custom/` to `/etc/fail2ban/` and restarts fail2ban.
+Copies filter and jail from `/usr/share/fail2ban/` to `/etc/fail2ban/` and restarts fail2ban.
 
 ### Uninstall
 
 ```bash
 # Remove only the custom jail config (keep fail2ban)
-/usr/share/fail2ban-custom/uninstall.sh
+/usr/share/fail2ban/uninstall.sh
 
-# Remove config, uninstall fail2ban packages, and /usr/share/fail2ban-custom/
-/usr/share/fail2ban-custom/uninstall.sh --purge
+# Remove config, uninstall fail2ban packages, and /usr/share/fail2ban/
+/usr/share/fail2ban/uninstall.sh --purge
 ```
 
 ### Option 3: Manual installation
 
-Extract the package, run `./install.sh` once. It installs to `/usr/share/fail2ban-custom/` and deploys to `/etc/fail2ban/`. Or manually:
+Extract the package, run `./install.sh` once. It installs to `/usr/share/fail2ban/` and deploys to `/etc/fail2ban/`. Or manually:
 
 ```bash
 dnf install fail2ban fail2ban-systemd -y
-# Copy from /usr/share/fail2ban-custom/ (after running install.sh) or from extracted package
+# Copy from /usr/share/fail2ban/ (after running install.sh) or from extracted package
 ```
 
 ---
@@ -118,7 +118,7 @@ To exclude trusted IPs from bans (wp-login and high-volume jails):
    192.168.1.100
    10.0.0.0/24
    ```
-2. Run `update-whitelist.sh` – regenerates filter ignoreregex (from `/usr/share/fail2ban-custom/`)
+2. Run `update-whitelist.sh` – regenerates filter ignoreregex (from `/usr/share/fail2ban/`)
 3. Run `setup.sh` – deploy and restart fail2ban
 
 Supported: single IPs, /24, /28, /29, /32. Other CIDRs fall back to single-IP match.
@@ -135,7 +135,7 @@ WHITELIST_COUNTRIES=IN
 
 - **IN** = India. Add more: `IN,US,GB` (comma-separated ISO codes).
 - **Country lookup:** IP2Location LITE DB1 (recommended) or ip-api.com (fallback, ~45 req/min).
-- **Setup IP2Location:** Run during install; or manually: `/usr/share/fail2ban-custom/scripts/setup-ip2location.sh`
+- **Setup IP2Location:** Run during install; or manually: `/usr/share/fail2ban/scripts/setup-ip2location.sh`
 
 ---
 
@@ -186,8 +186,8 @@ To reduce log volume, remove `/etc/fail2ban/fail2ban.d/loglevel-verbose.conf` an
 
 | Script        | Purpose                                                        |
 |---------------|----------------------------------------------------------------|
-| `install.sh`  | Full install: copies to /usr/share/fail2ban-custom, deploys to /etc/fail2ban, IP2Location, enable |
-| `setup.sh`    | Deploy config from /usr/share/fail2ban-custom to /etc/fail2ban, restart fail2ban |
+| `install.sh`  | Full install: copies to /usr/share/fail2ban, deploys to /etc/fail2ban, IP2Location, enable |
+| `setup.sh`    | Deploy config from /usr/share/fail2ban to /etc/fail2ban, restart fail2ban |
 | `status.sh`         | Show fail2ban and jail status                                  |
 | `update-whitelist.sh` | Regenerate filters from whitelist-ips.conf after adding IPs   |
 | `uninstall.sh`      | Remove config; use `--purge` to also uninstall fail2ban packages |

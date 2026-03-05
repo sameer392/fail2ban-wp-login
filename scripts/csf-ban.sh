@@ -24,7 +24,7 @@ WHITELIST_COUNTRIES=""
 if [ -n "$WHITELIST_COUNTRIES" ]; then
     COUNTRY=""
     # IP2Location LITE DB1 (country lookup via mmdblookup)
-    for db in /usr/share/GeoIP/IP2LOCATION-LITE-DB1.mmdb; do
+    for db in /etc/fail2ban/GeoIP/IP2LOCATION-LITE-DB1.mmdb; do
         if [ -f "$db" ] && command -v mmdblookup &>/dev/null; then
             COUNTRY=$(mmdblookup -f "$db" -i "$IP" country iso_code 2>/dev/null | awk -F'"' '/iso_code/ {print $2}')
             [ -n "$COUNTRY" ] && break

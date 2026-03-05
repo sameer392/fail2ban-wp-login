@@ -1,12 +1,12 @@
 #!/bin/bash
 # IP2Location LITE DB1 auto-updater (for cron)
-# Loads token from /etc/GeoIP/ip2location.conf
+# Loads token from /etc/fail2ban/GeoIP/ip2location.conf
 
-CONFIG="/etc/GeoIP/ip2location.conf"
+CONFIG="/etc/fail2ban/GeoIP/ip2location.conf"
 [ -f "$CONFIG" ] && . "$CONFIG"
 
 TOKEN="${IP2LOCATION_TOKEN:-}"
-DB_DIR="${IP2LOCATION_DB_DIR:-/usr/share/GeoIP}"
+DB_DIR="${IP2LOCATION_DB_DIR:-/etc/fail2ban/GeoIP}"
 ZIP="/tmp/IP2LOCATION-LITE-DB1.MMDB.ZIP"
 MMDB_DEST="$DB_DIR/IP2LOCATION-LITE-DB1.mmdb"
 
@@ -37,6 +37,7 @@ rm -f "$ZIP"
 
 MMDB=$(find "$TMPDIR" -name "*.mmdb" -type f | head -1)
 if [ -n "$MMDB" ]; then
+    mkdir -p "$DB_DIR"
     install -m 644 "$MMDB" "$MMDB_DEST"
 fi
 rm -rf "$TMPDIR"
