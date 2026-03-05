@@ -16,6 +16,7 @@ mkdir -p /usr/local/cpanel/whostmgr/docroot/cgi/fail2ban_manager
 mkdir -p /usr/local/cpanel/whostmgr/docroot/addon_plugins
 
 cp -f "$PLUGIN_DIR/index.php" /usr/local/cpanel/whostmgr/docroot/cgi/fail2ban_manager/
+cp -f "$PLUGIN_DIR/fail2ban_manager.png" /usr/local/cpanel/whostmgr/docroot/cgi/fail2ban_manager/
 chmod 755 /usr/local/cpanel/whostmgr/docroot/cgi/fail2ban_manager/index.php
 
 cp -f "$PLUGIN_DIR/fail2ban_manager.png" /usr/local/cpanel/whostmgr/docroot/addon_plugins/
