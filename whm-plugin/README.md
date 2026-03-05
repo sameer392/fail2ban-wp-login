@@ -34,4 +34,9 @@ cd /root/fail2ban/whm-plugin
 
 ## Location in WHM
 
-After install and cPanel restart, the plugin appears in WHM's plugin list as **Fail2Ban Manager**.
+After install and cPanel restart, the plugin appears as **Fail2Ban Manager**:
+- In WHM **Plugins** section (left nav)
+- Via WHM search (top right)
+- Direct URL: `https://yourserver:2087/cpsessXXX/cgi/fail2ban_manager/index.php`
+
+If it doesn't appear, re-run the install script and restart cPanel again.

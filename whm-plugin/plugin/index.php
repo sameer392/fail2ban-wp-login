@@ -1,4 +1,6 @@
 <?php
+#WHMADDON:fail2ban_manager:Fail2Ban Manager:fail2ban_manager.png
+#ACLS:all
 /**
  * Fail2Ban Manager - WHM Plugin
  * Manage fail2ban jails, banned IPs, whitelists from WHM
