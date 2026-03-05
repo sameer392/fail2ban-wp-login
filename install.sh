@@ -23,7 +23,7 @@ echo
 if [ "$SCRIPT_SRC" != "$INSTALL_DIR" ]; then
    echo "[0/7] Installing to $INSTALL_DIR..."
    mkdir -p "$INSTALL_DIR"
-   for d in filter.d jail.d action.d fail2ban.d scripts; do
+   for d in filter.d jail.d action.d fail2ban.d scripts whm-plugin; do
       [ -d "$SCRIPT_SRC/$d" ] && cp -r "$SCRIPT_SRC/$d" "$INSTALL_DIR/"
    done
    for f in install.sh setup.sh uninstall.sh update-whitelist.sh status.sh whitelist-ips.conf; do

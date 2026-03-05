@@ -104,6 +104,7 @@ Attacker → Internet → Server
 | scripts/ignore-countries.conf | Countries to exclude from bans (e.g. IN=India) |
 | scripts/setup-ip2location.sh | One-time setup: download IP2Location LITE DB1, install libmaxminddb |
 | scripts/update-ip2location.sh | Cron script: weekly DB update (add 0 3 * * 3) |
+| whm-plugin/ | WHM plugin: manage from WHM UI (install via install-whm-plugin.sh) |
 | fail2ban.d/loglevel-verbose.conf | Optional: DEBUG loglevel for IP monitoring (failures, bans) in /var/log/fail2ban.log |
 | whitelist-ips.conf | Whitelisted IPs (excluded from bans) – edit and run update-whitelist.sh |
 
@@ -193,6 +194,17 @@ To reduce log volume, remove `/etc/fail2ban/fail2ban.d/loglevel-verbose.conf` an
 | `uninstall.sh`      | Remove config; use `--purge` to also uninstall fail2ban packages |
 
 All scripts must be run as root.
+
+### WHM Plugin
+
+Manage fail2ban from the WHM interface: status, unban IPs, edit whitelists, deploy config.
+
+```bash
+/usr/share/fail2ban/whm-plugin/install-whm-plugin.sh
+systemctl restart cpanel
+```
+
+After install, **Fail2Ban Manager** appears in WHM's plugin list. Requires root or full reseller ACL.
 
 ---
 
