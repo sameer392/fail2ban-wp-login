@@ -24,23 +24,19 @@ Recommendations for enhancing usability, reliability, and functionality.
 
 ---
 
-## 2. Reliability & Safety
+## 2. Reliability & Safety ✅ (Completed)
 
-### 2.1 Backup before deploy
-**Current:** `setup.sh` overwrites configs in `/etc/fail2ban/` directly.  
-**Improvement:** Before overwriting, create a timestamped backup (e.g. `/etc/fail2ban/backups/YYYYMMDD-HHMMSS/`) and add a restore option.
+### 2.1 Backup before deploy ✅
+**Done:** setup.sh creates timestamped backup in `/etc/fail2ban/backups/YYYYMMDD-HHMMSS/` before deploying. Keeps last 10 backups. Added `restore-backup.sh` to restore from backup.
 
-### 2.2 Validation of jail settings in UI
-**Current:** UI accepts arbitrary values; validation is done in PHP.  
-**Improvement:** Add client-side validation and clearer error messages (e.g. min/max and allowed ranges).
+### 2.2 Validation of jail settings in UI ✅
+**Done:** Added client-side validation on form submit. Shows inline error with allowed ranges (maxretry 1-10000, findtime 60-2592000, bantime 60-31536000). HTML5 required and min/max attributes.
 
-### 2.3 Idempotent install
-**Current:** Re-running `install.sh` may show repeated messages.  
-**Improvement:** Make steps more idempotent and only perform changes when needed (e.g. skip copy if files match).
+### 2.3 Idempotent install ✅
+**Done:** install.sh uses `copy_if_changed()` (cmp) to only copy files when content differs. Reports "Source unchanged (already up to date)" when nothing changed.
 
-### 2.4 Graceful handling of missing GeoIP
-**Current:** If IP2Location is missing, country lookups may fail or fall back to ip-api.com.  
-**Improvement:** Surface a clear notice in the WHM plugin when GeoIP setup is incomplete and link to setup instructions.
+### 2.4 Graceful handling of missing GeoIP ✅
+**Done:** WHM plugin checks `is_geoip_ready()` (mmdb exists and mmdblookup works). Shows warning alert with setup-ip2location.sh instructions when not configured.
 
 ---
 

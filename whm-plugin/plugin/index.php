@@ -296,6 +296,15 @@ if (file_exists($whitelist_conf)) {
     $whitelist_ips = file_get_contents($whitelist_conf);
 }
 
+function is_geoip_ready() {
+    $mmdb = '/etc/fail2ban/GeoIP/IP2LOCATION-LITE-DB1.mmdb';
+    if (!file_exists($mmdb) || !is_readable($mmdb)) return false;
+    $out = [];
+    exec('mmdblookup -f ' . escapeshellarg($mmdb) . ' -i 8.8.8.8 country iso_code 2>/dev/null', $out, $ret);
+    return $ret === 0 && !empty($out);
+}
+
+$geoip_ready = is_geoip_ready();
 $jails = ['wordpress-wp-login', 'apache-high-volume'];
 $jail_labels = [
     'wordpress-wp-login' => ['failed' => 'Failed logins', 'failed_total' => 'Total failed logins'],
@@ -358,6 +367,12 @@ if ($home_url === '//' || $home_url === './') $home_url = '../../';
 
 <?php if ($msg): ?><p class="alert alert-info"><?php echo htmlspecialchars($msg); ?></p><?php endif; ?>
 
+<?php if (!$geoip_ready): ?>
+<p class="alert alert-warning">
+  <strong>GeoIP not configured.</strong> Country lookup uses ip-api.com (rate-limited). For better reliability, run <code>/etc/fail2ban/scripts/setup-ip2location.sh</code> as root. Use "Update IP2Location DB" below to refresh after setup.
+</p>
+<?php endif; ?>
+
 <?php if (!empty($whitelist_countries_arr)): ?>
 <p class="alert alert-warning">
   <strong>Note:</strong> IPs from whitelisted countries (<?php echo htmlspecialchars($ignore_countries); ?>) may appear if they were banned <em>before</em> the whitelist was added. Use "Unban all from whitelisted countries" below to remove them.
@@ -391,13 +406,13 @@ $js = $jail_settings[$j] ?? ['maxretry' => 5, 'findtime' => 300, 'bantime' => 36
         <tr><td>Total banned</td><td><?php echo htmlspecialchars($d['total_banned']); ?></td></tr>
       </tbody>
     </table>
-    <form method="post" class="form-inline" style="margin-bottom:12px;padding:8px;background:var(--base-01,#f9f9f9);border-radius:4px;">
+    <form method="post" class="form-inline jail-settings-form" style="margin-bottom:12px;padding:8px;background:var(--base-01,#f9f9f9);border-radius:4px;" data-maxretry-min="1" data-maxretry-max="10000" data-findtime-min="60" data-findtime-max="2592000" data-bantime-min="60" data-bantime-max="31536000">
       <input type="hidden" name="action" value="save_jail_settings">
       <input type="hidden" name="jail" value="<?php echo htmlspecialchars($j); ?>">
       <label>maxretry</label>
-      <input type="number" name="maxretry" value="<?php echo (int)$js['maxretry']; ?>" min="1" max="10000" class="form-control input-sm" style="width:70px;margin:0 8px 0 4px;" title="Max attempts before ban">
+      <input type="number" name="maxretry" value="<?php echo (int)$js['maxretry']; ?>" min="1" max="10000" class="form-control input-sm" style="width:70px;margin:0 8px 0 4px;" title="Max attempts before ban (1-10000)" required>
       <label style="margin-left:8px;">findtime</label>
-      <input type="number" name="findtime" value="<?php echo (int)$js['findtime']; ?>" min="60" max="2592000" class="form-control input-sm" style="width:80px;margin:0 4px 0 4px;" title="Window in seconds" data-preset-field="findtime">
+      <input type="number" name="findtime" value="<?php echo (int)$js['findtime']; ?>" min="60" max="2592000" class="form-control input-sm" style="width:80px;margin:0 4px 0 4px;" title="Window in seconds, 60-2592000 (30 days)" data-preset-field="findtime" required>
       <span class="text-muted" style="font-size:11px;">sec</span>
       <select class="form-control input-sm findtime-preset" style="width:auto;margin-left:4px;display:inline-block;" title="Quick presets: 300=5min, 600=10min">
         <option value="">preset</option>
@@ -407,7 +422,7 @@ $js = $jail_settings[$j] ?? ['maxretry' => 5, 'findtime' => 300, 'bantime' => 36
         <option value="3600">1 hr</option>
       </select>
       <label style="margin-left:8px;">bantime</label>
-      <input type="number" name="bantime" value="<?php echo (int)$js['bantime']; ?>" min="60" max="31536000" class="form-control input-sm" style="width:80px;margin:0 4px 0 4px;" title="Ban duration in seconds" data-preset-field="bantime">
+      <input type="number" name="bantime" value="<?php echo (int)$js['bantime']; ?>" min="60" max="31536000" class="form-control input-sm" style="width:80px;margin:0 4px 0 4px;" title="Ban duration in seconds, 60-31536000 (1 year)" data-preset-field="bantime" required>
       <span class="text-muted" style="font-size:11px;">sec</span>
       <select class="form-control input-sm bantime-preset" style="width:auto;margin-left:4px;display:inline-block;" title="Quick presets: 3600=1hr, 86400=24hr">
         <option value="">preset</option>
@@ -417,6 +432,7 @@ $js = $jail_settings[$j] ?? ['maxretry' => 5, 'findtime' => 300, 'bantime' => 36
         <option value="604800">1 week</option>
       </select>
       <button type="submit" class="btn btn-primary btn-sm" style="margin-left:8px;">Save &amp; Deploy</button>
+      <span class="jail-settings-err text-danger" style="margin-left:8px;display:none;"></span>
     </form>
     <p><strong>Banned IPs:</strong>
       <button type="button" class="btn btn-link reload-banned-ips" data-jail="<?php echo htmlspecialchars($j); ?>" title="Refresh table" style="margin-left:6px;padding:0 4px;vertical-align:middle;"><span class="glyphicon glyphicon-refresh"></span></button>
@@ -534,6 +550,25 @@ document.addEventListener('DOMContentLoaded', function() {
         var inp = form.querySelector('input[name="bantime"]');
         if (inp) inp.value = val;
         this.selectedIndex = 0;
+      }
+    });
+  });
+  // Jail settings form validation
+  document.querySelectorAll('.jail-settings-form').forEach(function(form) {
+    form.addEventListener('submit', function(e) {
+      var errEl = form.querySelector('.jail-settings-err');
+      if (errEl) errEl.style.display = 'none';
+      var maxretry = parseInt(form.querySelector('input[name="maxretry"]').value, 10);
+      var findtime = parseInt(form.querySelector('input[name="findtime"]').value, 10);
+      var bantime = parseInt(form.querySelector('input[name="bantime"]').value, 10);
+      var msg = '';
+      if (isNaN(maxretry) || maxretry < 1 || maxretry > 10000) msg = 'maxretry: 1–10000';
+      else if (isNaN(findtime) || findtime < 60 || findtime > 2592000) msg = 'findtime: 60–2592000 sec (30 days)';
+      else if (isNaN(bantime) || bantime < 60 || bantime > 31536000) msg = 'bantime: 60–31536000 sec (1 year)';
+      if (msg && errEl) {
+        errEl.textContent = msg;
+        errEl.style.display = 'inline';
+        e.preventDefault();
       }
     });
   });

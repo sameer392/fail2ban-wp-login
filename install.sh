@@ -20,16 +20,33 @@ echo "=== Fail2Ban WordPress wp-login - Full Installation ==="
 echo
 
 # 0. Install source to permanent location (so /root/fail2ban can be removed after)
+copy_if_changed() {
+   local src="$1" dst="$2"
+   mkdir -p "$(dirname "$dst")"
+   if [ ! -f "$dst" ] || ! cmp -s "$src" "$dst" 2>/dev/null; then
+      cp -f "$src" "$dst"
+      return 0
+   fi
+   return 1
+}
 if [ "$SCRIPT_SRC" != "$INSTALL_DIR" ]; then
    echo "[0/7] Installing to $INSTALL_DIR..."
    mkdir -p "$INSTALL_DIR"
+   updated=0
    for d in filter.d jail.d action.d fail2ban.d scripts whm-plugin; do
-      [ -d "$SCRIPT_SRC/$d" ] && cp -r "$SCRIPT_SRC/$d" "$INSTALL_DIR/"
+      if [ -d "$SCRIPT_SRC/$d" ]; then
+         for f in "$SCRIPT_SRC/$d"/*; do
+            [ -f "$f" ] || continue
+            bn=$(basename "$f")
+            copy_if_changed "$f" "$INSTALL_DIR/$d/$bn" && updated=1
+         done
+      fi
    done
-   for f in install.sh setup.sh uninstall.sh update-whitelist.sh status.sh whitelist-ips.conf fail2ban-logrotate; do
-      [ -f "$SCRIPT_SRC/$f" ] && cp -f "$SCRIPT_SRC/$f" "$INSTALL_DIR/"
+   for f in install.sh setup.sh uninstall.sh restore-backup.sh update-whitelist.sh status.sh whitelist-ips.conf fail2ban-logrotate; do
+      [ -f "$SCRIPT_SRC/$f" ] && copy_if_changed "$SCRIPT_SRC/$f" "$INSTALL_DIR/$f" && updated=1
    done
-   echo "      Source installed. You may remove $SCRIPT_SRC after this."
+   [ "$updated" -eq 1 ] && echo "      Source installed/updated." || echo "      Source unchanged (already up to date)."
+   echo "      You may remove $SCRIPT_SRC after this."
 fi
 CONFIG_DIR="$INSTALL_DIR"
 

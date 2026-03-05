@@ -27,7 +27,31 @@ fi
 echo "=== Fail2Ban WordPress wp-login - Setup (config deploy) ==="
 echo
 
-echo "[1/2] Deploying config to /etc/fail2ban/..."
+BACKUP_DIR="/etc/fail2ban/backups"
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+
+echo "[1/3] Backing up current config..."
+mkdir -p "$BACKUP_DIR"
+BKP="$BACKUP_DIR/$TIMESTAMP"
+mkdir -p "$BKP/filter.d" "$BKP/jail.d" "$BKP/fail2ban.d" "$BKP/scripts"
+for f in /etc/fail2ban/filter.d/wordpress-wp-login.conf /etc/fail2ban/filter.d/apache-high-volume.conf; do
+   [ -f "$f" ] && cp -a "$f" "$BKP/filter.d/"
+done
+for f in /etc/fail2ban/jail.d/wordpress-wp-login.conf /etc/fail2ban/jail.d/apache-high-volume.conf; do
+   [ -f "$f" ] && cp -a "$f" "$BKP/jail.d/"
+done
+mkdir -p "$BKP/action.d"
+[ -f /etc/fail2ban/action.d/csf-domain.conf ] && cp -a /etc/fail2ban/action.d/csf-domain.conf "$BKP/action.d/"
+[ -f /etc/fail2ban/fail2ban.d/loglevel-verbose.conf ] && cp -a /etc/fail2ban/fail2ban.d/loglevel-verbose.conf "$BKP/fail2ban.d/"
+for f in csf-ban.sh ignore-countries.conf setup-ip2location.sh update-ip2location.sh; do
+   [ -f "/etc/fail2ban/scripts/$f" ] && cp -a "/etc/fail2ban/scripts/$f" "$BKP/scripts/"
+done
+[ -f /etc/logrotate.d/fail2ban ] && cp -a /etc/logrotate.d/fail2ban "$BKP/" 2>/dev/null || true
+echo "      Backup: $BKP"
+# Keep last 10 backups
+ls -dt "$BACKUP_DIR"/[0-9]*-[0-9]* 2>/dev/null | tail -n +11 | xargs -r rm -rf
+
+echo "[2/3] Deploying config to /etc/fail2ban/..."
 cp -f "$CONFIG_DIR/filter.d/"*.conf /etc/fail2ban/filter.d/
 cp -f "$CONFIG_DIR/jail.d/"*.conf /etc/fail2ban/jail.d/
 [ -f "$CONFIG_DIR/action.d/csf-domain.conf" ] && cp -f "$CONFIG_DIR/action.d/csf-domain.conf" /etc/fail2ban/action.d/
@@ -40,7 +64,7 @@ mkdir -p /etc/fail2ban/scripts
 [ -f "$CONFIG_DIR/fail2ban-logrotate" ] && cp -f "$CONFIG_DIR/fail2ban-logrotate" /etc/logrotate.d/fail2ban
 echo "      Config deployed."
 
-echo "[2/2] Restarting fail2ban..."
+echo "[3/3] Restarting fail2ban..."
 systemctl restart fail2ban
 # Wait for fail2ban socket to be ready (avoid "Failed to access socket" on quick re-runs)
 for i in {1..10}; do

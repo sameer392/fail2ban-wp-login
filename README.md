@@ -264,6 +264,10 @@ ls /usr/local/apache/domlogs/*/* | head -5
 | **Immediate rotate** | `logrotate --force /etc/logrotate.d/fail2ban` |
 | **Loglevel** | `fail2ban.d/loglevel-verbose.conf` – set INFO for more detail, WARNING for less. Remove file to use fail2ban default. |
 
+### Backup & Restore
+
+`setup.sh` creates a timestamped backup in `/etc/fail2ban/backups/YYYYMMDD-HHMMSS/` before each deploy (keeps last 10). To restore: `restore-backup.sh` (latest) or `restore-backup.sh /etc/fail2ban/backups/YYYYMMDD-HHMMSS`.
+
 ---
 
 ## Shell Scripts Reference
@@ -271,7 +275,8 @@ ls /usr/local/apache/domlogs/*/* | head -5
 | Script | Purpose |
 |--------|---------|
 | install.sh | Full install: copy to /usr/share/fail2ban, deploy, IP2Location, logrotate, enable, WHM plugin |
-| setup.sh | Deploy config to /etc/fail2ban, restart fail2ban |
+| setup.sh | Deploy config to /etc/fail2ban (backs up first), restart fail2ban |
+| restore-backup.sh | Restore from backup (default: latest). Usage: `restore-backup.sh [BACKUP_DIR]` |
 | uninstall.sh | Remove config; --purge = also packages, WHM plugin, /etc and /usr/share |
 | status.sh | Show fail2ban service and jail status |
 | update-whitelist.sh | Regenerate filter ignoreregex from whitelist-ips.conf |
