@@ -152,9 +152,14 @@ $general_status = $gen_ret === 0 ? implode("\n", array_slice($gen_out, 0, 15)) :
 ?>
 <link rel="icon" type="image/png" href="fail2ban_manager.png">
 
+<?php
+$script_path = $_SERVER['SCRIPT_NAME'] ?? '/cgi/fail2ban_manager/index.php';
+$home_url = dirname(dirname($script_path)) . '/';
+if ($home_url === '//' || $home_url === './') $home_url = '../../';
+?>
 <ol class="breadcrumb">
-  <li><a href="/">Home</a></li>
-  <li><a href="#">Plugins</a></li>
+  <li><a href="<?php echo htmlspecialchars($home_url); ?>">Home</a></li>
+  <li><a href="<?php echo htmlspecialchars($home_url); ?>">Plugins</a></li>
   <li class="active">Fail2Ban Manager</li>
 </ol>
 
