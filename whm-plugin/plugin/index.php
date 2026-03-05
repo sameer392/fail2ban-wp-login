@@ -23,17 +23,45 @@ function checkacl($acl) {
     return false;
 }
 
+function get_ip_country_cache_db() {
+    static $pdo = null;
+    if ($pdo !== null) return $pdo;
+    $dir = '/etc/fail2ban/GeoIP';
+    $db_path = $dir . '/ip_country_cache.db';
+    if (!is_dir($dir)) @mkdir($dir, 0755, true);
+    try {
+        $pdo = new PDO('sqlite:' . $db_path);
+        $pdo->exec("CREATE TABLE IF NOT EXISTS ip_country (ip TEXT PRIMARY KEY, country TEXT NOT NULL, updated_at INTEGER)");
+    } catch (Exception $e) {
+        return null;
+    }
+    return $pdo;
+}
+
 function get_ip_country($ip, &$cache = []) {
     if (isset($cache[$ip])) return $cache[$ip];
     if (preg_match('/^(127\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|::1|fc00:|fe80:)/', $ip)) {
         return $cache[$ip] = '-';
     }
     $country = '';
-    $db = '/etc/fail2ban/GeoIP/IP2LOCATION-LITE-DB1.mmdb';
-    if (file_exists($db)) {
-        $out = [];
-        exec("mmdblookup -f " . escapeshellarg($db) . " -i " . escapeshellarg($ip) . " country iso_code 2>/dev/null", $out, $ret);
-        if ($ret === 0 && preg_match('/"([A-Z]{2})"/', implode(' ', $out), $m)) $country = $m[1];
+    $pdo = get_ip_country_cache_db();
+    if ($pdo) {
+        $stmt = $pdo->prepare("SELECT country FROM ip_country WHERE ip = ?");
+        if ($stmt && $stmt->execute([$ip])) {
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($row) return $cache[$ip] = $row['country'];
+        }
+    }
+    $mmdb = '/etc/fail2ban/GeoIP/IP2LOCATION-LITE-DB1.mmdb';
+    if (file_exists($mmdb)) {
+        foreach (['country iso_code', 'country_code'] as $path) {
+            $out = [];
+            exec("mmdblookup -f " . escapeshellarg($mmdb) . " -i " . escapeshellarg($ip) . " " . escapeshellarg($path) . " 2>/dev/null", $out, $ret);
+            if ($ret === 0 && preg_match('/"([A-Z]{2})"/', implode(' ', $out), $m)) {
+                $country = $m[1];
+                break;
+            }
+        }
     }
     if ($country === '') {
         if (function_exists('file_get_contents') && ini_get('allow_url_fopen')) {
@@ -47,7 +75,12 @@ function get_ip_country($ip, &$cache = []) {
             if ($json && preg_match('/"countryCode":"([A-Z]{2})"/', $json, $m)) $country = $m[1];
         }
     }
-    return $cache[$ip] = ($country ?: '-');
+    $country = $country ?: '-';
+    if ($pdo) {
+        $stmt = $pdo->prepare("INSERT OR REPLACE INTO ip_country (ip, country, updated_at) VALUES (?, ?, ?)");
+        if ($stmt) $stmt->execute([$ip, $country, time()]);
+    }
+    return $cache[$ip] = $country;
 }
 
 function get_ban_times($jail) {
@@ -139,6 +172,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
     } elseif ($action === 'update_ip2location') {
         exec('/etc/fail2ban/scripts/update-ip2location.sh 2>&1', $out, $ret);
         $msg = $ret === 0 ? 'IP2Location database updated.' : 'Update failed: ' . implode("\n", $out);
+    } elseif ($action === 'unban_whitelisted') {
+        $unbanned = 0;
+        $wl = array_map('trim', array_filter(explode(',', $_POST['whitelist_countries'] ?? 'IN')));
+        if (!empty($wl)) {
+            foreach (['wordpress-wp-login', 'apache-high-volume'] as $jail) {
+                $d = parse_jail_status($jail);
+                $country_cache = [];
+                foreach ($d['banned_ips'] ?? [] as $ip) {
+                    $c = get_ip_country($ip, $country_cache);
+                    if (in_array($c, $wl)) {
+                        exec("fail2ban-client set " . escapeshellarg($jail) . " unbanip " . escapeshellarg($ip) . " 2>&1", $out, $ret);
+                        if ($ret === 0) $unbanned++;
+                    }
+                }
+            }
+        }
+        $msg = $unbanned > 0 ? "Unbanned $unbanned IP(s) from whitelisted countries." : "No banned IPs found from whitelisted countries.";
     }
 }
 
@@ -147,10 +197,14 @@ WHM::header('Fail2Ban Manager', 0, 0);
 $ignore_conf = '/etc/fail2ban/scripts/ignore-countries.conf';
 $whitelist_conf = '/usr/share/fail2ban/whitelist-ips.conf';
 $ignore_countries = '';
+$whitelist_countries_arr = [];
 $whitelist_ips = '';
 if (file_exists($ignore_conf)) {
     $c = file_get_contents($ignore_conf);
-    if (preg_match('/WHITELIST_COUNTRIES=(.*)$/m', $c, $m)) $ignore_countries = trim($m[1]);
+    if (preg_match('/WHITELIST_COUNTRIES=(.*)$/m', $c, $m)) {
+        $ignore_countries = trim($m[1]);
+        $whitelist_countries_arr = array_map('trim', array_filter(explode(',', $ignore_countries)));
+    }
 }
 if (file_exists($whitelist_conf)) {
     $whitelist_ips = file_get_contents($whitelist_conf);
@@ -179,6 +233,12 @@ if ($home_url === '//' || $home_url === './') $home_url = '../../';
 </ol>
 
 <?php if ($msg): ?><p class="alert alert-info"><?php echo htmlspecialchars($msg); ?></p><?php endif; ?>
+
+<?php if (!empty($whitelist_countries_arr)): ?>
+<p class="alert alert-warning">
+  <strong>Note:</strong> IPs from whitelisted countries (<?php echo htmlspecialchars($ignore_countries); ?>) may appear if they were banned <em>before</em> the whitelist was added. Use "Unban all from whitelisted countries" below to remove them.
+</p>
+<?php endif; ?>
 
 <div class="row">
 <div class="col-md-8">
@@ -209,11 +269,11 @@ $d = $jail_data[$j];
     <table class="table table-bordered table-striped table-condensed">
       <thead><tr><th>#</th><th>IP Address</th><th>Country</th><th>Banned At</th><th>Action</th></tr></thead>
       <tbody>
-      <?php $country_cache = []; foreach (array_values($d['banned_ips']) as $i => $ip): $country = get_ip_country($ip, $country_cache); $banned_at = $ban_times[$ip] ?? '-'; ?>
-        <tr>
+      <?php $country_cache = []; foreach (array_values($d['banned_ips']) as $i => $ip): $country = get_ip_country($ip, $country_cache); $banned_at = $ban_times[$ip] ?? '-'; $is_whitelisted = in_array($country, $whitelist_countries_arr); ?>
+        <tr<?php echo $is_whitelisted ? ' class="warning" style="background:#fff3cd"' : ''; ?>>
           <td><?php echo $i + 1; ?></td>
           <td><code><?php echo htmlspecialchars($ip); ?></code></td>
-          <td><?php echo htmlspecialchars($country); ?></td>
+          <td><?php echo htmlspecialchars($country); ?><?php if ($is_whitelisted): ?> <span class="label label-warning">whitelisted</span><?php endif; ?></td>
           <td><?php echo htmlspecialchars($banned_at); ?></td>
           <td>
             <form method="post" style="display:inline;margin:0;">
@@ -237,6 +297,20 @@ $d = $jail_data[$j];
   </div>
 </div>
 <?php endforeach; ?>
+
+<?php if (!empty($whitelist_countries_arr)): ?>
+<div class="panel panel-warning" style="margin-top:15px;">
+  <div class="panel-heading">Whitelisted countries: <?php echo htmlspecialchars($ignore_countries); ?></div>
+  <div class="panel-body">
+    <p class="text-muted">IPs from these countries appearing above were likely banned before the whitelist was added.</p>
+    <form method="post">
+      <input type="hidden" name="action" value="unban_whitelisted">
+      <input type="hidden" name="whitelist_countries" value="<?php echo htmlspecialchars($ignore_countries); ?>">
+      <button type="submit" class="btn btn-warning">Unban all from whitelisted countries</button>
+    </form>
+  </div>
+</div>
+<?php endif; ?>
 
 </div>
 <div class="col-md-4">
