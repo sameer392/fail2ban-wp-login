@@ -83,6 +83,33 @@ function get_ip_country($ip, &$cache = []) {
     return $cache[$ip] = $country;
 }
 
+function get_affected_domains($ip, $jail, &$cache = []) {
+    $key = $ip . ':' . $jail;
+    if (isset($cache[$key])) return $cache[$key];
+    $domains = '';
+    $csf_deny = '/etc/csf/csf.deny';
+    if (is_readable($csf_deny)) {
+        $content = file_get_contents($csf_deny);
+        $ip_esc = preg_quote($ip, '/');
+        if (preg_match('/^' . $ip_esc . '\s+#\s*Fail2Ban\s+' . preg_quote($jail, '/') . '\s+-\s*(.+)$/m', $content, $m)) {
+            $domains = trim(preg_replace('/\s+/', ' ', $m[1]));
+        }
+    }
+    if ($domains === '' && is_dir('/usr/local/apache/domlogs')) {
+        $files = [];
+        exec("grep -lE '^" . preg_quote($ip, '/') . " ' /usr/local/apache/domlogs/*/* 2>/dev/null", $files);
+        $doms = [];
+        foreach ($files as $f) {
+            $doms[] = preg_replace('/-ssl_log$/', '', basename($f));
+        }
+        $doms = array_unique($doms);
+        $domains = implode(', ', array_slice($doms, 0, 8));
+        if (count($doms) > 8) $domains .= '...';
+    }
+    $cache[$key] = $domains ?: '-';
+    return $cache[$key];
+}
+
 function get_ban_times($jail) {
     $times = [];
     $db = '/var/lib/fail2ban/fail2ban.sqlite3';
@@ -199,6 +226,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
             exec("fail2ban-client set $jail unbanip $ip 2>&1", $out, $ret);
             $msg = $ret === 0 ? "Unbanned $ip from $jail" : implode("\n", $out);
         }
+    } elseif ($action === 'unban_bulk') {
+        $jail = preg_replace('/[^a-zA-Z0-9_-]/', '', $_POST['jail'] ?? '');
+        $ips = is_array($_POST['unban_ips'] ?? null) ? $_POST['unban_ips'] : [];
+        $unbanned = 0;
+        if ($jail && in_array($jail, ['wordpress-wp-login', 'apache-high-volume']) && !empty($ips)) {
+            foreach ($ips as $ip) {
+                $ip = preg_replace('/[^0-9a-fA-F.:]/', '', $ip);
+                if ($ip) {
+                    exec("fail2ban-client set $jail unbanip $ip 2>&1", $out, $ret);
+                    if ($ret === 0) $unbanned++;
+                }
+            }
+            $msg = $unbanned > 0 ? "Unbanned $unbanned IP(s) from $jail." : "No IPs unbanned.";
+        } else {
+            $msg = "No IPs selected.";
+        }
     } elseif ($action === 'update_ip2location') {
         exec('/etc/fail2ban/scripts/update-ip2location.sh 2>&1', $out, $ret);
         $msg = $ret === 0 ? 'IP2Location database updated.' : 'Update failed: ' . implode("\n", $out);
@@ -275,16 +318,18 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'banned_ips' && isset($_GET['jail'
         $country_cache = [];
         if (!empty($d['banned_ips'])) {
             $ban_times = get_ban_times($ajail);
-            echo '<table class="table table-bordered table-striped table-condensed"><thead><tr><th>#</th><th>IP Address</th><th>Country</th><th>Banned At</th><th>Action</th></tr></thead><tbody>';
+            $domain_cache = [];
+            echo '<table class="table table-bordered table-striped table-condensed banned-ips-table"><thead><tr><th><input type="checkbox" class="select-all-banned" data-jail="' . htmlspecialchars($ajail) . '" title="Select all"></th><th>#</th><th>IP Address</th><th>Country</th><th>Affected Domains</th><th>Banned At</th><th>Action</th></tr></thead><tbody>';
             foreach (array_values($d['banned_ips']) as $i => $ip) {
                 $country = get_ip_country($ip, $country_cache);
+                $affected = get_affected_domains($ip, $ajail, $domain_cache);
                 $banned_at = $ban_times[$ip] ?? '-';
                 $is_whitelisted = in_array($country, $whitelist_countries_arr);
-                $rowClass = $is_whitelisted ? ' class="warning" style="background:#fff3cd"' : '';
+                $rowClass = $is_whitelisted ? ' class="warning" style="background:var(--accent-01,#fff3cd)"' : '';
                 $wlLabel = $is_whitelisted ? ' <span class="label label-warning">whitelisted</span>' : '';
-                echo '<tr' . $rowClass . '><td>' . ($i + 1) . '</td><td><code>' . htmlspecialchars($ip) . '</code></td><td>' . htmlspecialchars($country) . $wlLabel . '</td><td>' . htmlspecialchars($banned_at) . '</td><td><form method="post" style="display:inline;margin:0;"><input type="hidden" name="action" value="unban"><input type="hidden" name="jail" value="' . htmlspecialchars($ajail) . '"><input type="hidden" name="ip" value="' . htmlspecialchars($ip) . '"><button type="submit" class="btn btn-default btn-xs">Unban</button></form></td></tr>';
+                echo '<tr' . $rowClass . '><td><input type="checkbox" class="banned-ip-cb" name="unban_ips[]" value="' . htmlspecialchars($ip) . '" form="bulk-unban-' . htmlspecialchars($ajail) . '"></td><td>' . ($i + 1) . '</td><td><code>' . htmlspecialchars($ip) . '</code></td><td>' . htmlspecialchars($country) . $wlLabel . '</td><td style="max-width:200px;font-size:11px;" title="' . htmlspecialchars($affected) . '">' . htmlspecialchars($affected) . '</td><td>' . htmlspecialchars($banned_at) . '</td><td><form method="post" style="display:inline;margin:0;"><input type="hidden" name="action" value="unban"><input type="hidden" name="jail" value="' . htmlspecialchars($ajail) . '"><input type="hidden" name="ip" value="' . htmlspecialchars($ip) . '"><button type="submit" class="btn btn-default btn-xs">Unban</button></form></td></tr>';
             }
-            echo '</tbody></table>';
+            echo '</tbody></table><form id="bulk-unban-' . htmlspecialchars($ajail) . '" method="post" style="margin-top:6px;"><input type="hidden" name="action" value="unban_bulk"><input type="hidden" name="jail" value="' . htmlspecialchars($ajail) . '"><button type="submit" class="btn btn-warning btn-sm bulk-unban-btn" disabled>Unban selected</button></form>';
         } else {
             echo '<p class="text-muted">No banned IPs.</p>';
         }
@@ -319,6 +364,7 @@ if ($home_url === '//' || $home_url === './') $home_url = '../../';
 </p>
 <?php endif; ?>
 
+<div class="fail2ban-manager">
 <div class="row">
 <div class="col-md-8">
 
@@ -345,32 +391,48 @@ $js = $jail_settings[$j] ?? ['maxretry' => 5, 'findtime' => 300, 'bantime' => 36
         <tr><td>Total banned</td><td><?php echo htmlspecialchars($d['total_banned']); ?></td></tr>
       </tbody>
     </table>
-    <form method="post" class="form-inline" style="margin-bottom:12px;padding:8px;background:#f9f9f9;border-radius:4px;">
+    <form method="post" class="form-inline" style="margin-bottom:12px;padding:8px;background:var(--base-01,#f9f9f9);border-radius:4px;">
       <input type="hidden" name="action" value="save_jail_settings">
       <input type="hidden" name="jail" value="<?php echo htmlspecialchars($j); ?>">
       <label>maxretry</label>
       <input type="number" name="maxretry" value="<?php echo (int)$js['maxretry']; ?>" min="1" max="10000" class="form-control input-sm" style="width:70px;margin:0 8px 0 4px;" title="Max attempts before ban">
       <label style="margin-left:8px;">findtime</label>
-      <input type="number" name="findtime" value="<?php echo (int)$js['findtime']; ?>" min="60" max="2592000" class="form-control input-sm" style="width:80px;margin:0 4px 0 4px;" title="Window in seconds (e.g. 300=5min)">
+      <input type="number" name="findtime" value="<?php echo (int)$js['findtime']; ?>" min="60" max="2592000" class="form-control input-sm" style="width:80px;margin:0 4px 0 4px;" title="Window in seconds" data-preset-field="findtime">
       <span class="text-muted" style="font-size:11px;">sec</span>
+      <select class="form-control input-sm findtime-preset" style="width:auto;margin-left:4px;display:inline-block;" title="Quick presets: 300=5min, 600=10min">
+        <option value="">preset</option>
+        <option value="60">1 min</option>
+        <option value="300">5 min</option>
+        <option value="600">10 min</option>
+        <option value="3600">1 hr</option>
+      </select>
       <label style="margin-left:8px;">bantime</label>
-      <input type="number" name="bantime" value="<?php echo (int)$js['bantime']; ?>" min="60" max="31536000" class="form-control input-sm" style="width:80px;margin:0 4px 0 4px;" title="Ban duration in seconds (e.g. 3600=1hr)">
+      <input type="number" name="bantime" value="<?php echo (int)$js['bantime']; ?>" min="60" max="31536000" class="form-control input-sm" style="width:80px;margin:0 4px 0 4px;" title="Ban duration in seconds" data-preset-field="bantime">
       <span class="text-muted" style="font-size:11px;">sec</span>
+      <select class="form-control input-sm bantime-preset" style="width:auto;margin-left:4px;display:inline-block;" title="Quick presets: 3600=1hr, 86400=24hr">
+        <option value="">preset</option>
+        <option value="300">5 min</option>
+        <option value="3600">1 hr</option>
+        <option value="86400">24 hr</option>
+        <option value="604800">1 week</option>
+      </select>
       <button type="submit" class="btn btn-primary btn-sm" style="margin-left:8px;">Save &amp; Deploy</button>
     </form>
     <p><strong>Banned IPs:</strong>
       <button type="button" class="btn btn-link reload-banned-ips" data-jail="<?php echo htmlspecialchars($j); ?>" title="Refresh table" style="margin-left:6px;padding:0 4px;vertical-align:middle;"><span class="glyphicon glyphicon-refresh"></span></button>
     </p>
     <div id="banned-ips-<?php echo htmlspecialchars($j); ?>" class="banned-ips-container">
-    <?php if (!empty($d['banned_ips'])): $ban_times = get_ban_times($j); ?>
-    <table class="table table-bordered table-striped table-condensed">
-      <thead><tr><th>#</th><th>IP Address</th><th>Country</th><th>Banned At</th><th>Action</th></tr></thead>
+    <?php if (!empty($d['banned_ips'])): $ban_times = get_ban_times($j); $domain_cache = []; ?>
+    <table class="table table-bordered table-striped table-condensed banned-ips-table">
+      <thead><tr><th><input type="checkbox" class="select-all-banned" data-jail="<?php echo htmlspecialchars($j); ?>" title="Select all"></th><th>#</th><th>IP Address</th><th>Country</th><th>Affected Domains</th><th>Banned At</th><th>Action</th></tr></thead>
       <tbody>
-      <?php $country_cache = []; foreach (array_values($d['banned_ips']) as $i => $ip): $country = get_ip_country($ip, $country_cache); $banned_at = $ban_times[$ip] ?? '-'; $is_whitelisted = in_array($country, $whitelist_countries_arr); ?>
-        <tr<?php echo $is_whitelisted ? ' class="warning" style="background:#fff3cd"' : ''; ?>>
+      <?php $country_cache = []; foreach (array_values($d['banned_ips']) as $i => $ip): $country = get_ip_country($ip, $country_cache); $affected = get_affected_domains($ip, $j, $domain_cache); $banned_at = $ban_times[$ip] ?? '-'; $is_whitelisted = in_array($country, $whitelist_countries_arr); ?>
+        <tr<?php echo $is_whitelisted ? ' class="warning" style="background:var(--accent-01,#fff3cd)"' : ''; ?>>
+          <td><input type="checkbox" class="banned-ip-cb" name="unban_ips[]" value="<?php echo htmlspecialchars($ip); ?>" form="bulk-unban-<?php echo htmlspecialchars($j); ?>"></td>
           <td><?php echo $i + 1; ?></td>
           <td><code><?php echo htmlspecialchars($ip); ?></code></td>
           <td><?php echo htmlspecialchars($country); ?><?php if ($is_whitelisted): ?> <span class="label label-warning">whitelisted</span><?php endif; ?></td>
+          <td style="max-width:200px;font-size:11px;" title="<?php echo htmlspecialchars($affected); ?>"><?php echo htmlspecialchars($affected); ?></td>
           <td><?php echo htmlspecialchars($banned_at); ?></td>
           <td>
             <form method="post" style="display:inline;margin:0;">
@@ -384,6 +446,11 @@ $js = $jail_settings[$j] ?? ['maxretry' => 5, 'findtime' => 300, 'bantime' => 36
       <?php endforeach; ?>
       </tbody>
     </table>
+    <form id="bulk-unban-<?php echo htmlspecialchars($j); ?>" method="post" style="margin-top:6px;">
+      <input type="hidden" name="action" value="unban_bulk">
+      <input type="hidden" name="jail" value="<?php echo htmlspecialchars($j); ?>">
+      <button type="submit" class="btn btn-warning btn-sm bulk-unban-btn" disabled>Unban selected</button>
+    </form>
     <?php else: ?>
     <p class="text-muted">No banned IPs.</p>
     <?php endif; ?>
@@ -443,9 +510,52 @@ $js = $jail_settings[$j] ?? ['maxretry' => 5, 'findtime' => 300, 'bantime' => 36
 
 </div>
 </div>
+</div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+  // Time preset dropdowns
+  document.querySelectorAll('.findtime-preset').forEach(function(sel) {
+    sel.addEventListener('change', function() {
+      var val = this.value;
+      if (val) {
+        var form = this.closest('form');
+        var inp = form.querySelector('input[name="findtime"]');
+        if (inp) inp.value = val;
+        this.selectedIndex = 0;
+      }
+    });
+  });
+  document.querySelectorAll('.bantime-preset').forEach(function(sel) {
+    sel.addEventListener('change', function() {
+      var val = this.value;
+      if (val) {
+        var form = this.closest('form');
+        var inp = form.querySelector('input[name="bantime"]');
+        if (inp) inp.value = val;
+        this.selectedIndex = 0;
+      }
+    });
+  });
+  // Bulk unban: select-all and enable button (event delegation for AJAX content)
+  document.addEventListener('change', function(e) {
+    if (e.target.classList.contains('select-all-banned')) {
+      var jail = e.target.getAttribute('data-jail');
+      var container = document.getElementById('banned-ips-' + jail);
+      if (!container) return;
+      var checked = e.target.checked;
+      container.querySelectorAll('.banned-ip-cb').forEach(function(cb) { cb.checked = checked; });
+      var btn = container.querySelector('.bulk-unban-btn');
+      if (btn) btn.disabled = !checked;
+    } else if (e.target.classList.contains('banned-ip-cb')) {
+      var form = document.getElementById(e.target.getAttribute('form'));
+      if (form) {
+        var any = form.querySelectorAll('.banned-ip-cb:checked').length > 0;
+        var btn = form.querySelector('.bulk-unban-btn');
+        if (btn) btn.disabled = !any;
+      }
+    }
+  });
   document.querySelectorAll('.reload-banned-ips').forEach(function(btn) {
     btn.addEventListener('click', function(e) {
       e.preventDefault();
@@ -478,6 +588,12 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 <style>
+/* Fail2Ban Manager - theme-aware styles */
+.fail2ban-manager .panel-body { background: var(--base-01, #fff); }
+.fail2ban-manager .banned-ips-container { background: var(--base-01, transparent); }
+.fail2ban-manager .table { background: var(--base-01, #fff); color: inherit; }
+.fail2ban-manager .table-striped > tbody > tr:nth-of-type(odd) { background: var(--base-02, #f9f9f9); }
+.fail2ban-manager .panel-default > .panel-heading { background: var(--base-02, #f5f5f5); color: inherit; border-color: var(--border-01, #ddd); }
 .glyphicon-refresh-animate { animation: spin 0.8s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 </style>

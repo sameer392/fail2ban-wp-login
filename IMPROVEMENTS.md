@@ -4,23 +4,23 @@ Recommendations for enhancing usability, reliability, and functionality.
 
 ---
 
-## 1. Usability & UX
+## 1. Usability & UX ✅ (Completed)
 
-### 1.1 WHM Plugin – Add helper text for time fields
+### 1.1 WHM Plugin – Add helper text for time fields ✅
 **Current:** `findtime` and `bantime` show raw seconds (e.g. 300, 3600).  
-**Improvement:** Add inline hints like "300 = 5 min, 3600 = 1 hr" or provide dropdown presets (5 min, 10 min, 1 hr, 24 hr).
+**Done:** Added preset dropdowns: findtime (1 min, 5 min, 10 min, 1 hr), bantime (5 min, 1 hr, 24 hr, 1 week).
 
-### 1.2 WHM Plugin – Show affected domains per ban
+### 1.2 WHM Plugin – Show affected domains per ban ✅
 **Current:** Banned IPs table shows IP, country, banned time.  
-**Improvement:** Add an "Affected domains" column from CSF comment or domlog lookup, so admins can see which sites were targeted.
+**Done:** Added "Affected Domains" column from csf.deny comment or domlog lookup.
 
-### 1.3 WHM Plugin – Bulk unban from table
+### 1.3 WHM Plugin – Bulk unban from table ✅
 **Current:** Must unban IPs one by one.  
-**Improvement:** Add checkboxes and a "Unban selected" button for multiple IPs.
+**Done:** Added row checkboxes, "Select all", and "Unban selected" button.
 
-### 1.4 WHM Plugin – Dark/light theme consistency
+### 1.4 WHM Plugin – Dark/light theme consistency ✅
 **Current:** UI uses WHM styles; may not match all themes.  
-**Improvement:** Review Bootstrap classes and ensure compatibility with WHM’s theme.
+**Done:** Added .fail2ban-manager wrapper and theme-aware CSS with var() fallbacks.
 
 ---
 
