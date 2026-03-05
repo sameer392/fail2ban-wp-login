@@ -63,19 +63,28 @@ fi
 COMMENT=$(echo "$COMMENT" | head -c 200)
 /usr/sbin/csf -d "$IP" "$COMMENT"
 
-# Optional: send email alert on ban
+# Optional: send email alert on ban (SMTP)
 EMAIL_CONF="${SCRIPT_DIR}/email-alerts.conf"
 if [ -f "$EMAIL_CONF" ] && [ -r "$EMAIL_CONF" ]; then
     . "$EMAIL_CONF"
-    if [ -n "$EMAIL_TO" ] && [ "$EMAIL_TO" != "none" ]; then
+    if [ "${ENABLED:-0}" = "1" ] && [ -n "$EMAIL_TO" ] && [ -n "$SMTP_HOST" ] && command -v curl &>/dev/null; then
         SUBJ="[Fail2Ban] $IP banned ($JAIL)"
         BODY="IP $IP was banned by Fail2Ban (jail: $JAIL). Domains: ${DOMAINS:--}. $(date)"
-        if command -v mail &>/dev/null; then
-            echo "$BODY" | mail -s "$SUBJ" "$EMAIL_TO" 2>/dev/null
-        elif command -v mailx &>/dev/null; then
-            echo "$BODY" | mailx -s "$SUBJ" "$EMAIL_TO" 2>/dev/null
-        elif [ -x /usr/sbin/sendmail ]; then
-            printf 'To: %s\nSubject: %s\n\n%s\n' "$EMAIL_TO" "$SUBJ" "$BODY" | /usr/sbin/sendmail -t 2>/dev/null
+        FROM="${EMAIL_FROM:-fail2ban@localhost}"
+        MSG="From: $FROM
+To: $EMAIL_TO
+Subject: $SUBJ
+
+$BODY"
+        case "${SMTP_SECURE:-tls}" in
+            ssl) PORT="${SMTP_PORT:-465}" ; URL="smtps://${SMTP_HOST}:${PORT}" ; EXTRA="" ;;
+            tls) PORT="${SMTP_PORT:-587}" ; URL="smtp://${SMTP_HOST}:${PORT}" ; EXTRA="--ssl-reqd" ;;
+            *)   PORT="${SMTP_PORT:-25}"  ; URL="smtp://${SMTP_HOST}:${PORT}" ; EXTRA="" ;;
+        esac
+        if [ -n "$SMTP_USER" ] && [ -n "$SMTP_PASS" ]; then
+            echo "$MSG" | curl -s --connect-timeout 10 --max-time 30 --url "$URL" --mail-from "$FROM" --mail-rcpt "$EMAIL_TO" --user "$SMTP_USER:$SMTP_PASS" $EXTRA -T - 2>/dev/null
+        else
+            echo "$MSG" | curl -s --connect-timeout 10 --max-time 30 --url "$URL" --mail-from "$FROM" --mail-rcpt "$EMAIL_TO" $EXTRA -T - 2>/dev/null
         fi
     fi
 fi

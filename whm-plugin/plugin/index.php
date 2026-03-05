@@ -322,19 +322,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
         }
     } elseif ($action === 'save_email_alerts') {
         $conf = '/etc/fail2ban/scripts/email-alerts.conf';
-        $email = trim($_POST['email_alerts_to'] ?? '');
-        $threshold = max(1, min(100, (int)($_POST['email_alerts_threshold'] ?? 1)));
-        if ($email === '') {
-            if (file_exists($conf) && is_writable($conf)) {
-                file_put_contents($conf, "# Email alerts disabled - leave EMAIL_TO empty\nEMAIL_TO=\nEMAIL_THRESHOLD=1\n");
-                $msg = "Email alerts disabled.";
-            }
+        $scripts_dir = '/etc/fail2ban/scripts';
+        if (!is_dir($scripts_dir)) @mkdir($scripts_dir, 0755, true);
+        $enabled = trim($_POST['email_alerts_enabled'] ?? '') === '1';
+        $smtp_host = trim($_POST['smtp_host'] ?? '');
+        $smtp_port = (int)($_POST['smtp_port'] ?? 587);
+        $smtp_user = trim($_POST['smtp_user'] ?? '');
+        $smtp_pass = $_POST['smtp_pass'] ?? '';
+        $smtp_secure = in_array($_POST['smtp_secure'] ?? '', ['tls', 'ssl', 'none']) ? $_POST['smtp_secure'] : 'tls';
+        $email_from = trim($_POST['email_from'] ?? '');
+        $email_to = trim($_POST['email_alerts_to'] ?? '');
+        $old_pass = '';
+        if (file_exists($conf) && is_readable($conf)) {
+            $ec = file_get_contents($conf);
+            if (preg_match('/SMTP_PASS=(.+)$/m', $ec, $m)) $old_pass = trim($m[1], " \t\n\r\0\x0B'\"");
+        }
+        $content = "# Email alerts - configured via WHM (SMTP)\n# Set ENABLED=1 and fill SMTP/EMAIL fields to enable\nENABLED=" . ($enabled ? '1' : '0') . "\n";
+        $content .= "SMTP_HOST=" . preg_replace('/[\r\n]/', '', $smtp_host) . "\n";
+        $content .= "SMTP_PORT=" . max(1, min(65535, $smtp_port)) . "\n";
+        $content .= "SMTP_USER=" . preg_replace('/[\r\n]/', '', $smtp_user) . "\n";
+        $pass_val = $smtp_pass !== '' ? $smtp_pass : $old_pass;
+        $content .= "SMTP_PASS='" . str_replace("'", "'\"'\"'", $pass_val) . "'\n";
+        $content .= "SMTP_SECURE=" . $smtp_secure . "\n";
+        $content .= "EMAIL_FROM=" . preg_replace('/[\r\n]/', '', $email_from) . "\n";
+        $content .= "EMAIL_TO=" . preg_replace('/[\r\n]/', '', $email_to) . "\n";
+        if (file_put_contents($conf, $content) !== false) {
+            chmod($conf, 0600);
+            $msg = $enabled && $email_to ? "Email alerts (SMTP) saved. Alerts will be sent to $email_to." : ($enabled ? "SMTP config saved. Add recipient email and enable." : "Email alerts disabled.");
         } else {
-            if (filter_var($email, FILTER_VALIDATE_EMAIL) && (is_dir('/etc/fail2ban/scripts') || @mkdir('/etc/fail2ban/scripts', 0755, true))) {
-                $content = "# Email on ban - configured via WHM\n# Send when ban occurs (optional threshold: min failed count)\nEMAIL_TO=$email\nEMAIL_THRESHOLD=$threshold\n";
-                if (file_put_contents($conf, $content) !== false) $msg = "Email alerts saved. Notifications will be sent to $email.";
-                else $msg = "Could not write email-alerts.conf.";
-            } else $msg = "Invalid email address.";
+            $msg = "Could not write email-alerts.conf.";
         }
     }
 }
@@ -366,13 +382,21 @@ function is_geoip_ready() {
 $geoip_ready = is_geoip_ready();
 $bans_24h = get_bans_last_24h();
 $current_loglevel = get_current_loglevel();
-$email_alerts_to = '';
-$email_alerts_threshold = 1;
 $email_conf = '/etc/fail2ban/scripts/email-alerts.conf';
+$email_alerts_enabled = false;
+$email_alerts_to = '';
+$smtp_host = $smtp_port = $smtp_user = $smtp_secure = $email_from = '';
+$smtp_port = 587;
+$smtp_secure = 'tls';
 if (file_exists($email_conf) && is_readable($email_conf)) {
     $ec = file_get_contents($email_conf);
+    $email_alerts_enabled = (bool)preg_match('/ENABLED\s*=\s*1/', $ec);
     if (preg_match('/EMAIL_TO\s*=\s*(.+)$/m', $ec, $m)) $email_alerts_to = trim($m[1]);
-    if (preg_match('/EMAIL_THRESHOLD\s*=\s*(\d+)/', $ec, $m)) $email_alerts_threshold = max(1, (int)$m[1]);
+    if (preg_match('/SMTP_HOST\s*=\s*(.+)$/m', $ec, $m)) $smtp_host = trim($m[1]);
+    if (preg_match('/SMTP_PORT\s*=\s*(\d+)/', $ec, $m)) $smtp_port = max(1, min(65535, (int)$m[1]));
+    if (preg_match('/SMTP_USER\s*=\s*(.+)$/m', $ec, $m)) $smtp_user = trim($m[1]);
+    if (preg_match('/SMTP_SECURE\s*=\s*(\w+)/', $ec, $m)) $smtp_secure = in_array(strtolower($m[1]), ['tls', 'ssl', 'none']) ? strtolower($m[1]) : 'tls';
+    if (preg_match('/EMAIL_FROM\s*=\s*(.+)$/m', $ec, $m)) $email_from = trim($m[1]);
 }
 $jails = ['wordpress-wp-login', 'apache-high-volume'];
 $jail_labels = [
@@ -605,12 +629,40 @@ $js = $jail_settings[$j] ?? ['maxretry' => 5, 'findtime' => 300, 'bantime' => 36
 </form>
 
 <h3 style="margin-top:20px;">Email Alerts</h3>
-<p class="text-muted" style="font-size:12px;">Optional: receive email when an IP is banned. Leave empty to disable.</p>
+<p class="text-muted" style="font-size:12px;">Receive email when an IP is banned. Uses SMTP.</p>
 <form method="post">
   <input type="hidden" name="action" value="save_email_alerts">
-  <input type="email" name="email_alerts_to" value="<?php echo htmlspecialchars($email_alerts_to); ?>" class="form-control input-sm" placeholder="admin@example.com" style="width:220px;margin-bottom:4px;">
-  <span class="text-muted" style="font-size:11px;">Threshold: </span><input type="number" name="email_alerts_threshold" value="<?php echo (int)$email_alerts_threshold; ?>" min="1" max="100" style="width:50px;" title="Min failed attempts before sending alert"> <span class="text-muted" style="font-size:11px;">failed attempts</span>
-  <button type="submit" class="btn btn-default btn-sm" style="margin-top:6px;display:block;">Save</button>
+  <label class="checkbox-inline"><input type="checkbox" name="email_alerts_enabled" value="1"<?php echo $email_alerts_enabled ? ' checked' : ''; ?>> Enable</label>
+  <div style="margin-top:8px;">
+    <label class="control-label" style="font-size:11px;">SMTP Host</label>
+    <input type="text" name="smtp_host" value="<?php echo htmlspecialchars($smtp_host); ?>" class="form-control input-sm" placeholder="smtp.example.com" style="width:100%;max-width:260px;">
+  </div>
+  <div style="margin-top:4px;">
+    <label class="control-label" style="font-size:11px;">Port</label>
+    <input type="number" name="smtp_port" value="<?php echo (int)$smtp_port; ?>" min="1" max="65535" class="form-control input-sm" style="width:80px;display:inline-block;"> 
+    <select name="smtp_secure" class="form-control input-sm" style="width:90px;display:inline-block;margin-left:4px;">
+      <option value="none"<?php echo $smtp_secure === 'none' ? ' selected' : ''; ?>>None</option>
+      <option value="tls"<?php echo $smtp_secure === 'tls' ? ' selected' : ''; ?>>TLS</option>
+      <option value="ssl"<?php echo $smtp_secure === 'ssl' ? ' selected' : ''; ?>>SSL</option>
+    </select>
+  </div>
+  <div style="margin-top:4px;">
+    <label class="control-label" style="font-size:11px;">Username</label>
+    <input type="text" name="smtp_user" value="<?php echo htmlspecialchars($smtp_user); ?>" class="form-control input-sm" placeholder="user@example.com" style="width:100%;max-width:260px;">
+  </div>
+  <div style="margin-top:4px;">
+    <label class="control-label" style="font-size:11px;">Password</label>
+    <input type="password" name="smtp_pass" value="" class="form-control input-sm" placeholder="Leave blank to keep current" autocomplete="new-password" style="width:100%;max-width:260px;">
+  </div>
+  <div style="margin-top:4px;">
+    <label class="control-label" style="font-size:11px;">From address</label>
+    <input type="email" name="email_from" value="<?php echo htmlspecialchars($email_from); ?>" class="form-control input-sm" placeholder="noreply@example.com" style="width:100%;max-width:260px;">
+  </div>
+  <div style="margin-top:4px;">
+    <label class="control-label" style="font-size:11px;">Recipient (To)</label>
+    <input type="email" name="email_alerts_to" value="<?php echo htmlspecialchars($email_alerts_to); ?>" class="form-control input-sm" placeholder="admin@example.com" style="width:100%;max-width:260px;">
+  </div>
+  <button type="submit" class="btn btn-default btn-sm" style="margin-top:8px;">Save</button>
 </form>
 
 <h3 style="margin-top:20px;">Actions</h3>
