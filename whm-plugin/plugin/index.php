@@ -208,24 +208,52 @@ function get_ban_epochs($jail) {
 
 function get_banned_ips_paginated($jail, $page, $per_page, $search, &$total_out) {
     $db = '/var/lib/fail2ban/fail2ban.sqlite3';
-    if (!file_exists($db) || !is_readable($db)) { $total_out = 0; return []; }
     $jail_esc = preg_replace('/[^a-zA-Z0-9_-]/', '', $jail);
     $search = trim(preg_replace('/[^0-9a-fA-F.:]/', '', $search));
-    $active_sql = " AND (timeofban + bantime) > strftime('%s','now')";
-    $search_sql = ($search !== '') ? " AND ip LIKE '%" . str_replace("'", "''", $search) . "%'" : '';
     $offset = max(0, ($page - 1) * $per_page);
     $limit = max(1, min(50, (int)$per_page));
-    $out = [];
-    $where = "jail='" . $jail_esc . "'" . $active_sql . $search_sql;
-    exec("sqlite3 -separator '|' " . escapeshellarg($db) . " \"SELECT COUNT(*) FROM bips WHERE " . $where . "\" 2>/dev/null", $cnt_out, $cnt_ret);
-    $total_out = ($cnt_ret === 0 && isset($cnt_out[0])) ? (int)$cnt_out[0] : 0;
-    if ($total_out <= 0) return [];
-    exec("sqlite3 -separator '|' " . escapeshellarg($db) . " \"SELECT ip, datetime(timeofban, 'unixepoch', 'localtime') FROM bips WHERE " . $where . " ORDER BY timeofban DESC LIMIT " . (int)$limit . " OFFSET " . (int)$offset . "\" 2>/dev/null", $out, $ret);
-    if ($ret !== 0) return [];
     $rows = [];
-    foreach ($out as $line) {
-        $p = explode('|', $line, 2);
-        if (count($p) >= 2) $rows[] = ['ip' => trim($p[0]), 'banned_at' => trim($p[1])];
+
+    if (file_exists($db) && is_readable($db)) {
+        $active_sql = " AND (timeofban + bantime) > cast(strftime('%s','now') as integer)";
+        $search_sql = ($search !== '') ? " AND ip LIKE '%" . str_replace("'", "''", $search) . "%'" : '';
+        $where = "jail='" . $jail_esc . "'" . $active_sql . $search_sql;
+        exec("sqlite3 -separator '|' " . escapeshellarg($db) . " \"SELECT COUNT(*) FROM bips WHERE " . $where . "\" 2>/dev/null", $cnt_out, $cnt_ret);
+        $total_out = ($cnt_ret === 0 && isset($cnt_out[0])) ? (int)$cnt_out[0] : 0;
+        if ($total_out > 0) {
+            $out = [];
+            exec("sqlite3 -separator '|' " . escapeshellarg($db) . " \"SELECT ip, datetime(timeofban, 'unixepoch', 'localtime') FROM bips WHERE " . $where . " ORDER BY timeofban DESC LIMIT " . (int)$limit . " OFFSET " . (int)$offset . "\" 2>/dev/null", $out, $ret);
+            if ($ret === 0) {
+                foreach ($out as $line) {
+                    $p = explode('|', $line, 2);
+                    if (count($p) >= 2) $rows[] = ['ip' => trim($p[0]), 'banned_at' => trim($p[1])];
+                }
+                return $rows;
+            }
+        }
+    }
+
+    $total_out = 0;
+    $d = parse_jail_status($jail);
+    $ips = $d['banned_ips'] ?? [];
+    if (empty($ips)) return [];
+    if ($search !== '') {
+        $ips = array_values(array_filter($ips, function($ip) use ($search) { return stripos($ip, $search) !== false; }));
+    }
+    $total_out = count($ips);
+    $epochs = get_ban_epochs($jail);
+    usort($ips, function($a, $b) use ($epochs) {
+        $ea = $epochs[$a] ?? 0;
+        $eb = $epochs[$b] ?? 0;
+        return $eb - $ea;
+    });
+    $ips = array_slice($ips, $offset, $limit);
+    foreach ($ips as $ip) {
+        $banned_at = '-';
+        if (!empty($epochs[$ip])) {
+            $banned_at = date('Y-m-d H:i:s', $epochs[$ip]);
+        }
+        $rows[] = ['ip' => $ip, 'banned_at' => $banned_at];
     }
     return $rows;
 }
@@ -235,7 +263,7 @@ function cleanup_expired_bips(&$deleted) {
     $deleted = 0;
     if (!file_exists($db) || !is_writable($db)) return false;
     $out = [];
-    exec("sqlite3 " . escapeshellarg($db) . " \"DELETE FROM bips WHERE (timeofban + bantime) <= strftime('%s','now'); SELECT changes();\" 2>/dev/null", $out, $ret);
+    exec("sqlite3 " . escapeshellarg($db) . " \"DELETE FROM bips WHERE (timeofban + bantime) <= cast(strftime('%s','now') as integer); SELECT changes();\" 2>/dev/null", $out, $ret);
     if ($ret === 0 && isset($out[0]) && is_numeric($out[0])) $deleted = (int)$out[0];
     return true;
 }
@@ -601,6 +629,32 @@ foreach ($jails as $j) {
     $jail_settings[$j] = get_jail_settings($j);
 }
 
+// AJAX: get log details for banned IP from bips.data
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'ip_log_details' && isset($_GET['ip']) && isset($_GET['jail'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    $ip = preg_replace('/[^0-9a-fA-F.:]/', '', $_GET['ip']);
+    $ajail = preg_replace('/[^a-zA-Z0-9_-]/', '', $_GET['jail']);
+    $matches = [];
+    $failures = 0;
+    if ($ip && $ajail && in_array($ajail, ['wordpress-wp-login', 'apache-high-volume'])) {
+        $db = '/var/lib/fail2ban/fail2ban.sqlite3';
+        if (file_exists($db) && is_readable($db)) {
+            $out = [];
+            $ip_esc = str_replace("'", "''", $ip);
+            exec("sqlite3 " . escapeshellarg($db) . " \"SELECT data FROM bips WHERE jail='" . $ajail . "' AND ip='" . $ip_esc . "' LIMIT 1\" 2>/dev/null", $out, $ret);
+            if ($ret === 0 && !empty($out[0])) {
+                $data = @json_decode($out[0], true);
+                if (is_array($data)) {
+                    $matches = $data['matches'] ?? [];
+                    $failures = (int)($data['failures'] ?? 0);
+                }
+            }
+        }
+    }
+    echo json_encode(['ok' => true, 'ip' => $ip, 'jail' => $ajail, 'matches' => $matches, 'failures' => $failures]);
+    exit;
+}
+
 // AJAX: cleanup expired bips from DB
 if (isset($_GET['ajax']) && $_GET['ajax'] === 'clean_expired_bips') {
     header('Content-Type: application/json; charset=utf-8');
@@ -643,7 +697,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'banned_ips' && isset($_GET['jail'
                 $rowClass = $is_whitelisted ? ' class="warning" style="background:var(--accent-01,#fff3cd)"' : '';
                 $wlLabel = $is_whitelisted ? ' <span class="label label-warning">whitelisted</span>' : '';
                 $rowNum = ($page - 1) * $per_page + $i + 1;
-                echo '<tr' . $rowClass . '><td><input type="checkbox" class="banned-ip-cb" name="unban_ips[]" value="' . htmlspecialchars($ip) . '" form="' . htmlspecialchars($form_id) . '"></td><td>' . $rowNum . '</td><td><code>' . htmlspecialchars($ip) . '</code></td><td>' . htmlspecialchars($country) . $wlLabel . '</td><td style="max-width:150px;font-size:11px;" title="' . htmlspecialchars($org) . '">' . htmlspecialchars($org) . '</td><td style="max-width:200px;font-size:11px;" title="' . htmlspecialchars($affected) . '">' . htmlspecialchars($affected) . '</td><td>' . htmlspecialchars($banned_at) . '</td><td><form method="post" style="display:inline;margin:0;"><input type="hidden" name="action" value="unban"><input type="hidden" name="tab" value="' . htmlspecialchars($retab) . '"><input type="hidden" name="jail" value="' . htmlspecialchars($ajail) . '"><input type="hidden" name="ip" value="' . htmlspecialchars($ip) . '"><button type="submit" class="btn btn-default btn-xs">Unban</button></form></td></tr>';
+                echo '<tr' . $rowClass . '><td><input type="checkbox" class="banned-ip-cb" name="unban_ips[]" value="' . htmlspecialchars($ip) . '" form="' . htmlspecialchars($form_id) . '"></td><td>' . $rowNum . '</td><td><a href="#" class="ip-log-detail" data-ip="' . htmlspecialchars($ip) . '" data-jail="' . htmlspecialchars($ajail) . '" title="Click to view log details">' . htmlspecialchars($ip) . '</a></td><td>' . htmlspecialchars($country) . $wlLabel . '</td><td style="max-width:150px;font-size:11px;" title="' . htmlspecialchars($org) . '">' . htmlspecialchars($org) . '</td><td style="max-width:200px;font-size:11px;" title="' . htmlspecialchars($affected) . '">' . htmlspecialchars($affected) . '</td><td>' . htmlspecialchars($banned_at) . '</td><td><form method="post" style="display:inline;margin:0;"><input type="hidden" name="action" value="unban"><input type="hidden" name="tab" value="' . htmlspecialchars($retab) . '"><input type="hidden" name="jail" value="' . htmlspecialchars($ajail) . '"><input type="hidden" name="ip" value="' . htmlspecialchars($ip) . '"><button type="submit" class="btn btn-default btn-xs">Unban</button></form></td></tr>';
             }
             echo '</tbody></table><form id="' . htmlspecialchars($form_id) . '" method="post" style="margin-top:6px;"><input type="hidden" name="action" value="unban_bulk"><input type="hidden" name="tab" value="' . htmlspecialchars($retab) . '"><input type="hidden" name="jail" value="' . htmlspecialchars($ajail) . '"><button type="submit" class="btn btn-warning btn-sm bulk-unban-btn" disabled>Unban selected</button></form>';
             if ($total_pages > 1) {
@@ -686,6 +740,8 @@ if ($home_url === '//' || $home_url === './') $home_url = '../../';
 
 <div id="fail2ban-msg" class="alert alert-info" style="display:<?php echo $msg ? 'block' : 'none'; ?>;"><?php echo $msg ? htmlspecialchars($msg) : ''; ?></div>
 <div id="fail2ban-loading" class="fail2ban-loading-overlay" style="display:none;"><span class="fail2ban-spinner"></span><span>Processing...</span></div>
+<div id="ip-log-modal-backdrop" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:2147483646;"></div>
+<div id="ip-log-modal" tabindex="-1" role="dialog" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:90%;max-width:900px;max-height:80vh;background:#fff;border-radius:4px;box-shadow:0 4px 20px rgba(0,0,0,0.5);z-index:2147483647;overflow:hidden;border:1px solid #ccc;"><div style="padding:15px;border-bottom:1px solid #ddd;display:flex;justify-content:space-between;align-items:center;"><h4 style="margin:0;">Log entries for <code id="ip-log-modal-ip"></code> (<span id="ip-log-modal-jail"></span>)</h4><button type="button" class="btn btn-default btn-sm ip-log-modal-close">&times;</button></div><div style="padding:15px;overflow:auto;max-height:400px;"><p class="text-muted" id="ip-log-modal-loading">Loading...</p><pre id="ip-log-modal-body" style="display:none;font-size:11px;white-space:pre-wrap;word-break:break-all;"></pre><p class="text-muted" id="ip-log-modal-empty" style="display:none;">No log entries in database for this IP.</p></div><div style="padding:15px;border-top:1px solid #ddd;"><button type="button" class="btn btn-default btn-sm ip-log-modal-close">Close</button></div></div>
 <?php if (!$geoip_ready): ?>
 <p class="alert alert-warning">
   <strong>GeoIP not configured.</strong> Country lookup uses ip-api.com (rate-limited). For better reliability, run <code>/etc/fail2ban/scripts/setup-ip2location.sh</code> as root. Use "Update IP2Location DB" in the Settings tab to refresh after setup.
@@ -992,6 +1048,27 @@ document.addEventListener('DOMContentLoaded', function() {
   var base = (window.location.href || '').split('?')[0];
   var jails = ['wordpress-wp-login', 'apache-high-volume'];
 
+  (function() {
+    var modal = document.getElementById('ip-log-modal');
+    var backdrop = document.getElementById('ip-log-modal-backdrop');
+    if (modal && backdrop && document.body) {
+      document.body.appendChild(backdrop);
+      document.body.appendChild(modal);
+    }
+  })();
+
+  function closeIpLogModal() {
+    var m = document.getElementById('ip-log-modal');
+    var b = document.getElementById('ip-log-modal-backdrop');
+    if (m) m.style.display = 'none';
+    if (b) b.style.display = 'none';
+  }
+  document.addEventListener('click', function(e) {
+    if (e.target.closest('.ip-log-modal-close') || e.target.id === 'ip-log-modal-backdrop') {
+      closeIpLogModal();
+    }
+  });
+
   function showMsg(msg, isErr) {
     var el = document.getElementById('fail2ban-msg');
     if (!el) return;
@@ -1038,6 +1115,48 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   document.addEventListener('click', function(e) {
+    var ipLink = e.target.closest('.ip-log-detail');
+    if (ipLink) {
+      e.preventDefault();
+      var ip = ipLink.getAttribute('data-ip');
+      var jail = ipLink.getAttribute('data-jail');
+      if (!ip || !jail) return;
+      var modal = document.getElementById('ip-log-modal');
+      var backdrop = document.getElementById('ip-log-modal-backdrop');
+      var loadingEl = document.getElementById('ip-log-modal-loading');
+      var bodyEl = document.getElementById('ip-log-modal-body');
+      var emptyEl = document.getElementById('ip-log-modal-empty');
+      var ipEl = document.getElementById('ip-log-modal-ip');
+      var jailEl = document.getElementById('ip-log-modal-jail');
+      if (modal && ipEl && jailEl) {
+        ipEl.textContent = ip;
+        jailEl.textContent = jail;
+        loadingEl.style.display = 'block';
+        bodyEl.style.display = 'none';
+        emptyEl.style.display = 'none';
+        modal.style.display = 'block';
+        if (backdrop) backdrop.style.display = 'block';
+        fetch(base + '?ajax=ip_log_details&ip=' + encodeURIComponent(ip) + '&jail=' + encodeURIComponent(jail), { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            loadingEl.style.display = 'none';
+            var matches = data.matches || [];
+            var failures = data.failures || 0;
+            if (matches.length > 0) {
+              bodyEl.textContent = (failures ? 'Failures: ' + failures + '\n\n' : '') + matches.join('\n');
+              bodyEl.style.display = 'block';
+            } else {
+              emptyEl.style.display = 'block';
+            }
+          })
+          .catch(function() {
+            loadingEl.style.display = 'none';
+            emptyEl.textContent = 'Failed to load log details.';
+            emptyEl.style.display = 'block';
+          });
+      }
+      return;
+    }
     var pg = e.target.closest('.banned-page-link');
     if (pg && !pg.closest('li.disabled')) {
       e.preventDefault();
@@ -1246,6 +1365,8 @@ document.addEventListener('DOMContentLoaded', function() {
 .fail2ban-manager .table-striped > tbody > tr:nth-of-type(odd) { background: var(--base-02, #f9f9f9); }
 .fail2ban-manager .panel-default > .panel-heading { background: var(--base-02, #f5f5f5); color: inherit; border-color: var(--border-01, #ddd); }
 .glyphicon-refresh-animate { animation: spin 0.8s linear infinite; }
+.ip-log-detail { cursor: pointer; text-decoration: underline; color: var(--accent-05, #337ab7); }
+.ip-log-detail:hover { color: var(--accent-06, #23527c); }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .fail2ban-loading-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.35); z-index: 9999; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 10px; color: var(--base-01, #fff); font-size: 14px; }
 .fail2ban-spinner { width: 36px; height: 36px; border: 4px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite; }
