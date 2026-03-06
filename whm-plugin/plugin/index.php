@@ -5,6 +5,7 @@
  * Fail2Ban Manager - WHM Plugin
  * Manage fail2ban jails, banned IPs, whitelists from WHM
  */
+define('FAIL2BAN_WHM_VERSION', '1.0.0');
 require_once('/usr/local/cpanel/php/WHM.php');
 
 function checkacl($acl) {
@@ -477,9 +478,9 @@ if (!checkacl('all')) {
 $msg = '';
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
 $current_tab = $_GET['tab'] ?? $_POST['tab'] ?? 'dashboard';
-$valid_tabs = ['dashboard' => 'Dashboard', 'banned' => 'Banned IPs', 'whitelists' => 'Whitelists', 'notifications' => 'Notifications', 'settings' => 'Settings'];
+$valid_tabs = ['dashboard' => 'Dashboard', 'banned' => 'Banned IPs', 'whitelists' => 'Whitelists', 'notifications' => 'Notifications', 'settings' => 'Settings', 'update' => 'Update'];
 if (!isset($valid_tabs[$current_tab])) $current_tab = 'dashboard';
-$tab_from_action = ['save_ignore_countries' => 'whitelists', 'save_whitelist_ips' => 'whitelists', 'save_blocklist_organizations' => 'whitelists', 'save_email_alerts' => 'notifications', 'save_loglevel' => 'settings', 'deploy' => 'settings', 'update_ip2location' => 'settings', 'save_ip2location_token' => 'settings', 'setup_ip2location_asn' => 'settings', 'unban' => 'banned', 'unban_bulk' => 'banned', 'unban_whitelisted' => 'banned', 'save_jail_settings' => 'settings'];
+$tab_from_action = ['save_ignore_countries' => 'whitelists', 'save_whitelist_ips' => 'whitelists', 'save_blocklist_organizations' => 'whitelists', 'save_email_alerts' => 'notifications', 'save_loglevel' => 'settings', 'deploy' => 'settings', 'update_ip2location' => 'settings', 'save_ip2location_token' => 'settings', 'setup_ip2location_asn' => 'settings', 'unban' => 'banned', 'unban_bulk' => 'banned', 'unban_whitelisted' => 'banned', 'save_jail_settings' => 'settings', 'do_update' => 'update'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
     if ($action === 'save_ignore_countries') {
@@ -701,6 +702,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
         } else {
             $msg = "Could not write email-alerts.conf.";
         }
+    } elseif ($action === 'do_update') {
+        $tag = preg_replace('/[^a-zA-Z0-9_.-]/', '', $_POST['update_tag'] ?? '');
+        if ($tag === '') {
+            $msg = 'Invalid or missing release tag.';
+        } else {
+            $script = '/usr/share/fail2ban/scripts/update-from-github.sh';
+            if (!file_exists($script) || !is_executable($script)) {
+                $msg = 'Update script not found. Install fail2ban-whm from GitHub first.';
+            } else {
+                $out = [];
+                exec(escapeshellarg($script) . ' ' . escapeshellarg($tag) . ' 2>&1', $out, $ret);
+                $msg = $ret === 0 ? 'Update complete: ' . $tag . '. Refreshing...' : 'Update failed: ' . implode("\n", $out);
+            }
+        }
     }
     if (isset($tab_from_action[$action])) $current_tab = $tab_from_action[$action];
     if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
@@ -845,6 +860,33 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'jail_summary') {
     exit;
 }
 
+// AJAX: check GitHub for latest release
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'check_update') {
+    header('Content-Type: application/json; charset=utf-8');
+    $current = FAIL2BAN_WHM_VERSION;
+    $latest_tag = '';
+    $latest_ver = '';
+    $update_available = false;
+    $api = 'https://api.github.com/repos/sameer392/fail2ban-whm/releases/latest';
+    $json = '';
+    if (function_exists('file_get_contents') && ini_get('allow_url_fopen')) {
+        $ctx = stream_context_create(['http' => ['timeout' => 5, 'header' => 'User-Agent: Fail2Ban-WHM-Plugin']]);
+        $json = @file_get_contents($api, false, $ctx);
+    } elseif (function_exists('curl_init')) {
+        $ch = curl_init($api);
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 5, CURLOPT_USERAGENT => 'Fail2Ban-WHM-Plugin']);
+        $json = @curl_exec($ch);
+        curl_close($ch);
+    }
+    if ($json && preg_match('/"tag_name"\s*:\s*"([^"]+)"/', $json, $m)) {
+        $latest_tag = $m[1];
+        $latest_ver = preg_match('/v?(\d+\.\d+\.\d+)/', $latest_tag, $v) ? $v[1] : $latest_tag;
+        $update_available = version_compare($latest_ver, $current, '>');
+    }
+    echo json_encode(['ok' => true, 'current' => $current, 'latest_tag' => $latest_tag, 'latest_ver' => $latest_ver, 'update_available' => $update_available]);
+    exit;
+}
+
 // AJAX handler must run BEFORE WHM::header() so we don't output the full page wrapper
 if (isset($_GET['ajax']) && $_GET['ajax'] === 'banned_ips') {
     $jail_filter = isset($_GET['jail_filter']) ? preg_replace('/[^a-zA-Z0-9_-]/', '', $_GET['jail_filter']) : '';
@@ -911,7 +953,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'banned_ips') {
     exit;
 }
 
-WHM::header('Fail2Ban Manager', 0, 0);
+WHM::header('Fail2Ban Manager v' . FAIL2BAN_WHM_VERSION, 0, 0);
 
 exec('fail2ban-client status 2>/dev/null', $gen_out, $gen_ret);
 $general_status = $gen_ret === 0 ? implode("\n", array_slice($gen_out, 0, 15)) : 'fail2ban not running';
@@ -927,7 +969,7 @@ if ($home_url === '//' || $home_url === './') $home_url = '../../';
 <ol class="breadcrumb">
   <li><a href="<?php echo htmlspecialchars($home_url); ?>">Home</a></li>
   <li><a href="<?php echo htmlspecialchars($home_url); ?>">Plugins</a></li>
-  <li class="active">Fail2Ban Manager</li>
+  <li class="active">Fail2Ban Manager <span class="text-muted" style="font-weight:normal;">v<?php echo htmlspecialchars(FAIL2BAN_WHM_VERSION); ?></span></li>
 </ol>
 
 <div id="fail2ban-msg" class="alert alert-info" style="display:<?php echo $msg ? 'block' : 'none'; ?>;"><?php echo $msg ? htmlspecialchars($msg) : ''; ?></div>
@@ -1267,6 +1309,31 @@ if (strpos($j, 'apache-ua-') === 0) continue;
 <?php endif; ?>
 </div>
 
+<!-- Tab: Update from GitHub -->
+<div role="tabpanel" class="tab-pane <?php echo $current_tab === 'update' ? 'active' : ''; ?>" id="tab-update">
+<div class="panel panel-default">
+  <div class="panel-heading">Plugin Update</div>
+  <div class="panel-body">
+    <p class="text-muted">Check for and install the latest version from <a href="https://github.com/sameer392/fail2ban-whm/releases" target="_blank" rel="noopener">GitHub</a>.</p>
+    <p><strong>Current version:</strong> <code id="update-current-ver"><?php echo htmlspecialchars(FAIL2BAN_WHM_VERSION); ?></code></p>
+    <div id="update-status" class="text-muted" style="margin:10px 0;"></div>
+    <div id="update-actions" style="margin-top:12px;">
+      <button type="button" class="btn btn-default btn-sm" id="check-update-btn">Check for updates</button>
+      <div id="update-form-wrap" style="display:none;margin-top:12px;">
+        <form method="post" id="do-update-form">
+          <input type="hidden" name="action" value="do_update">
+          <input type="hidden" name="tab" value="update">
+          <input type="hidden" name="update_tag" id="update-tag-input" value="">
+          <p><strong>Latest:</strong> <span id="update-latest-tag"></span></p>
+          <button type="submit" class="btn btn-primary" id="do-update-btn">Update now</button>
+        </form>
+      </div>
+    </div>
+    <p class="text-muted" style="margin-top:15px;font-size:12px;">Your whitelist IPs, ignore countries, and blocklist settings are preserved during update.</p>
+  </div>
+</div>
+</div>
+
 </div>
 </div>
 
@@ -1500,11 +1567,13 @@ document.addEventListener('DOMContentLoaded', function() {
     if (loadingEl) loadingEl.style.display = 'flex';
     var fd = new FormData(form);
     var url = (form.getAttribute && form.getAttribute('action')) || window.location.href;
+    var isUpdate = (fd.get('action') || '') === 'do_update';
     fetch(url, { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
       .then(function(r) { return r.json().catch(function() { return { ok: false, msg: 'Invalid response' }; }); })
       .then(function(data) {
         showMsg(data.msg || 'Done.', !data.ok);
         if (data.refresh_banned) refreshBannedIps();
+        if (isUpdate && data.ok) { window.location.href = base + '?tab=update'; return; }
       })
       .catch(function() {
         showMsg('Request failed. Please try again.', true);
@@ -1632,6 +1701,35 @@ document.addEventListener('DOMContentLoaded', function() {
       loadBannedIpsMerged(page, search, jailFilter, function() {
         if (icon) icon.classList.remove('glyphicon-refresh-animate');
       });
+    }
+    var checkUpdateBtn = e.target.closest('#check-update-btn');
+    if (checkUpdateBtn) {
+      e.preventDefault();
+      var statusEl = document.getElementById('update-status');
+      var formWrap = document.getElementById('update-form-wrap');
+      var tagInput = document.getElementById('update-tag-input');
+      var latestTagEl = document.getElementById('update-latest-tag');
+      if (!statusEl) return;
+      statusEl.textContent = 'Checking...';
+      formWrap.style.display = 'none';
+      fetch(base + '?ajax=check_update', { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (!data.ok) { statusEl.textContent = 'Check failed.'; return; }
+          if (data.latest_tag) {
+            if (data.update_available) {
+              statusEl.textContent = 'Update available: ' + data.latest_tag;
+              tagInput.value = data.latest_tag;
+              latestTagEl.textContent = data.latest_tag;
+              formWrap.style.display = 'block';
+            } else {
+              statusEl.textContent = 'You have the latest version (' + data.latest_tag + ').';
+            }
+          } else {
+            statusEl.textContent = 'Could not fetch latest release.';
+          }
+        })
+        .catch(function() { statusEl.textContent = 'Check failed.'; });
     }
   });
 
