@@ -1,7 +1,8 @@
 #!/bin/bash
 # Fail2Ban CSF ban helper - adds IP to csf.deny with jail name and affected domain(s)
-# Skips banning IPs from whitelisted countries (see ignore-countries.conf)
-# Exceptions: blocked orgs (blocklist-organizations.conf), multi-domain abuse, and User-Agent keyword jails (apache-ua-*)
+# Country whitelist (ignore-countries.conf) applies ONLY to apache-high-volume.
+# All other jails (wordpress-wp-login, apache-ua-*, etc.) always ban regardless of country.
+# Exceptions for apache-high-volume: blocked orgs, multi-domain abuse override whitelist.
 # Usage: csf-ban.sh <ip> <jail_name>
 # Comment format: Fail2Ban <jail> - <domain1, domain2, ...>
 
@@ -18,8 +19,8 @@ DOMLOGS="${DOMLOGS:-/usr/local/apache/domlogs}"
 [[ "$IP" =~ ^(127\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.) ]] && exit 0
 [[ "$IP" =~ ^(::1|fc00:|fe80:) ]] && exit 0
 
-# User-Agent keyword jails (apache-ua-*) always ban - ignore country whitelist
-[[ "$JAIL" == apache-ua-* ]] && SKIP_WHITELIST=1 || SKIP_WHITELIST=0
+# Country whitelist applies ONLY to apache-high-volume; all other jails always ban
+[[ "$JAIL" == apache-high-volume ]] && SKIP_WHITELIST=0 || SKIP_WHITELIST=1
 
 # Find domains that had traffic from this IP (needed for comment and multi-domain check)
 DOMAINS=""
