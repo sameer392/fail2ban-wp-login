@@ -211,14 +211,16 @@ function get_banned_ips_paginated($jail, $page, $per_page, $search, &$total_out)
     if (!file_exists($db) || !is_readable($db)) { $total_out = 0; return []; }
     $jail_esc = preg_replace('/[^a-zA-Z0-9_-]/', '', $jail);
     $search = trim(preg_replace('/[^0-9a-fA-F.:]/', '', $search));
+    $active_sql = " AND (timeofban + bantime) > strftime('%s','now')";
     $search_sql = ($search !== '') ? " AND ip LIKE '%" . str_replace("'", "''", $search) . "%'" : '';
     $offset = max(0, ($page - 1) * $per_page);
     $limit = max(1, min(50, (int)$per_page));
     $out = [];
-    exec("sqlite3 -separator '|' " . escapeshellarg($db) . " \"SELECT COUNT(*) FROM bips WHERE jail='" . $jail_esc . "'" . $search_sql . "\" 2>/dev/null", $cnt_out, $cnt_ret);
+    $where = "jail='" . $jail_esc . "'" . $active_sql . $search_sql;
+    exec("sqlite3 -separator '|' " . escapeshellarg($db) . " \"SELECT COUNT(*) FROM bips WHERE " . $where . "\" 2>/dev/null", $cnt_out, $cnt_ret);
     $total_out = ($cnt_ret === 0 && isset($cnt_out[0])) ? (int)$cnt_out[0] : 0;
     if ($total_out <= 0) return [];
-    exec("sqlite3 -separator '|' " . escapeshellarg($db) . " \"SELECT ip, datetime(timeofban, 'unixepoch', 'localtime') FROM bips WHERE jail='" . $jail_esc . "'" . $search_sql . " ORDER BY timeofban DESC LIMIT " . (int)$limit . " OFFSET " . (int)$offset . "\" 2>/dev/null", $out, $ret);
+    exec("sqlite3 -separator '|' " . escapeshellarg($db) . " \"SELECT ip, datetime(timeofban, 'unixepoch', 'localtime') FROM bips WHERE " . $where . " ORDER BY timeofban DESC LIMIT " . (int)$limit . " OFFSET " . (int)$offset . "\" 2>/dev/null", $out, $ret);
     if ($ret !== 0) return [];
     $rows = [];
     foreach ($out as $line) {
@@ -226,6 +228,16 @@ function get_banned_ips_paginated($jail, $page, $per_page, $search, &$total_out)
         if (count($p) >= 2) $rows[] = ['ip' => trim($p[0]), 'banned_at' => trim($p[1])];
     }
     return $rows;
+}
+
+function cleanup_expired_bips(&$deleted) {
+    $db = '/var/lib/fail2ban/fail2ban.sqlite3';
+    $deleted = 0;
+    if (!file_exists($db) || !is_writable($db)) return false;
+    $out = [];
+    exec("sqlite3 " . escapeshellarg($db) . " \"DELETE FROM bips WHERE (timeofban + bantime) <= strftime('%s','now'); SELECT changes();\" 2>/dev/null", $out, $ret);
+    if ($ret === 0 && isset($out[0]) && is_numeric($out[0])) $deleted = (int)$out[0];
+    return true;
 }
 
 function get_bans_last_24h() {
@@ -589,6 +601,15 @@ foreach ($jails as $j) {
     $jail_settings[$j] = get_jail_settings($j);
 }
 
+// AJAX: cleanup expired bips from DB
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'clean_expired_bips') {
+    header('Content-Type: application/json; charset=utf-8');
+    $deleted = 0;
+    $ok = function_exists('checkacl') && checkacl('all') && cleanup_expired_bips($deleted);
+    echo json_encode(['ok' => $ok, 'msg' => $ok ? "Removed $deleted expired ban(s) from database." : 'Cleanup failed.', 'deleted' => $deleted]);
+    exit;
+}
+
 // AJAX handler must run BEFORE WHM::header() so we don't output the full page wrapper
 if (isset($_GET['ajax']) && $_GET['ajax'] === 'banned_ips' && isset($_GET['jail'])) {
     $ajail = preg_replace('/[^a-zA-Z0-9_-]/', '', $_GET['jail']);
@@ -609,7 +630,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'banned_ips' && isset($_GET['jail'
         $total_pages = $total > 0 ? (int)ceil($total / $per_page) : 0;
         $container_id = 'banned-ips-' . $ajail . $fs;
         echo '<div class="banned-ips-ajax" data-jail="' . htmlspecialchars($ajail) . '" data-container="' . htmlspecialchars($container_id) . '">';
-        echo '<form class="form-inline banned-ip-search" style="margin-bottom:10px;"><input type="text" class="form-control input-sm banned-ip-search-input" placeholder="Search IP..." value="' . htmlspecialchars($search) . '" style="width:180px;"><button type="submit" class="btn btn-default btn-sm" style="margin-left:6px;">Search</button></form>';
+        echo '<form class="form-inline banned-ip-search" style="margin-bottom:10px;"><input type="text" class="form-control input-sm banned-ip-search-input" placeholder="Search IP (type to filter)..." value="' . htmlspecialchars($search) . '" style="width:200px;" data-jail="' . htmlspecialchars($ajail) . '"><button type="submit" class="btn btn-default btn-sm" style="margin-left:6px;">Search</button></form>';
         if (!empty($ips)) {
             echo '<table class="table table-bordered table-striped table-condensed banned-ips-table"><thead><tr><th><input type="checkbox" class="select-all-banned" data-jail="' . htmlspecialchars($ajail) . '" data-container="' . htmlspecialchars($container_id) . '" title="Select all"></th><th>#</th><th>IP Address</th><th>Country</th><th>Organization</th><th>Affected Domains</th><th>Banned At</th><th>Action</th></tr></thead><tbody>';
             foreach ($ips as $i => $row) {
@@ -728,6 +749,14 @@ if ($home_url === '//' || $home_url === './') $home_url = '../../';
   </div>
 </div>
 <?php endif; ?>
+<div class="panel panel-default" style="margin-bottom:15px;">
+  <div class="panel-body">
+    <button type="button" class="btn btn-default btn-sm clean-expired-bips" title="Remove expired ban records from fail2ban database">
+      <span class="glyphicon glyphicon-trash"></span> Clean expired from database
+    </button>
+    <span class="text-muted" style="margin-left:8px;font-size:12px;">Removes IPs whose ban period has ended.</span>
+  </div>
+</div>
 <?php foreach ($jails as $j): ?>
 <div class="panel panel-default">
   <div class="panel-heading"><?php echo htmlspecialchars($j); ?> — Banned IPs</div>
@@ -973,11 +1002,15 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(function() { el.style.display = 'none'; }, 5000);
   }
 
+  var bannedPageState = {};
+  jails.forEach(function(j) { bannedPageState[j] = { page: 1, search: '' }; });
+
   function loadBannedIps(jail, page, search, onDone) {
     var container = document.getElementById('banned-ips-' + jail + '-tab');
     if (!container) return;
     page = page || 1;
-    search = search || '';
+    search = (search !== undefined && search !== null) ? String(search) : '';
+    if (bannedPageState[jail]) bannedPageState[jail] = { page: page, search: search };
     var url = base + '?ajax=banned_ips&jail=' + encodeURIComponent(jail) + '&fs=tab&page=' + page + '&per_page=10';
     if (search) url += '&search=' + encodeURIComponent(search);
     container.innerHTML = '<p class="text-muted">Loading...</p>';
@@ -991,7 +1024,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   function refreshBannedIps() {
-    jails.forEach(function(jail) { loadBannedIps(jail, 1, ''); });
+    jails.forEach(function(jail) { loadBannedIps(jail, bannedPageState[jail] ? bannedPageState[jail].page : 1, bannedPageState[jail] ? bannedPageState[jail].search : ''); });
   }
 
   function ensureBannedLoaded() {
@@ -1015,6 +1048,19 @@ document.addEventListener('DOMContentLoaded', function() {
         var inp = wrap.querySelector('.banned-ip-search-input');
         loadBannedIps(jail, page, inp ? inp.value : '');
       }
+    }
+  });
+
+  var searchDebounce = {};
+  document.addEventListener('input', function(e) {
+    if (e.target.classList && e.target.classList.contains('banned-ip-search-input')) {
+      var inp = e.target;
+      var jail = inp.closest('.banned-ips-ajax') ? inp.closest('.banned-ips-ajax').getAttribute('data-jail') : inp.getAttribute('data-jail');
+      if (!jail) return;
+      clearTimeout(searchDebounce[jail]);
+      searchDebounce[jail] = setTimeout(function() {
+        loadBannedIps(jail, 1, inp.value);
+      }, 350);
     }
   });
 
@@ -1149,6 +1195,20 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
   document.addEventListener('click', function(e) {
+    var cleanBtn = e.target.closest('.clean-expired-bips');
+    if (cleanBtn) {
+      e.preventDefault();
+      cleanBtn.disabled = true;
+      fetch(base + '?ajax=clean_expired_bips', { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          showMsg(data.msg || 'Done.', !data.ok);
+          if (data.ok && data.deleted > 0) refreshBannedIps(true);
+        })
+        .catch(function() { showMsg('Request failed.', true); })
+        .finally(function() { cleanBtn.disabled = false; });
+      return;
+    }
     var btn = e.target.closest('.reload-banned-ips');
     if (btn) {
       e.preventDefault();
