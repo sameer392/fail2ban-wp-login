@@ -6,11 +6,10 @@
 set -e
 [ "$EUID" -ne 0 ] && { echo "Run as root"; exit 1; }
 
-TOKEN="${IP2LOCATION_TOKEN:-}"
 GEOIP_DIR="/etc/fail2ban/GeoIP"
 DB_DIR="${IP2LOCATION_DB_DIR:-$GEOIP_DIR}"
-
 [ -f "$GEOIP_DIR/ip2location.conf" ] && . "$GEOIP_DIR/ip2location.conf" 2>/dev/null
+TOKEN="${IP2LOCATION_TOKEN:-}"
 [ -z "$TOKEN" ] && { echo "Set IP2LOCATION_TOKEN in $GEOIP_DIR/ip2location.conf (from lite.ip2location.com)"; exit 1; }
 
 echo "=== IP2Location LITE ASN Setup for fail2ban ==="

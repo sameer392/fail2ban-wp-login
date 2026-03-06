@@ -291,7 +291,7 @@ $action = $_POST['action'] ?? $_GET['action'] ?? '';
 $current_tab = $_GET['tab'] ?? $_POST['tab'] ?? 'dashboard';
 $valid_tabs = ['dashboard' => 'Dashboard', 'banned' => 'Banned IPs', 'whitelists' => 'Whitelists', 'notifications' => 'Notifications', 'settings' => 'Settings'];
 if (!isset($valid_tabs[$current_tab])) $current_tab = 'dashboard';
-$tab_from_action = ['save_ignore_countries' => 'whitelists', 'save_whitelist_ips' => 'whitelists', 'save_email_alerts' => 'notifications', 'save_loglevel' => 'settings', 'deploy' => 'settings', 'update_ip2location' => 'settings', 'unban' => 'banned', 'unban_bulk' => 'banned', 'unban_whitelisted' => 'banned', 'save_jail_settings' => 'settings'];
+$tab_from_action = ['save_ignore_countries' => 'whitelists', 'save_whitelist_ips' => 'whitelists', 'save_blocklist_organizations' => 'whitelists', 'save_email_alerts' => 'notifications', 'save_loglevel' => 'settings', 'deploy' => 'settings', 'update_ip2location' => 'settings', 'save_ip2location_token' => 'settings', 'setup_ip2location_asn' => 'settings', 'unban' => 'banned', 'unban_bulk' => 'banned', 'unban_whitelisted' => 'banned', 'save_jail_settings' => 'settings'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
     if ($action === 'save_ignore_countries') {
@@ -368,6 +368,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
     } elseif ($action === 'update_ip2location') {
         exec('/etc/fail2ban/scripts/update-ip2location.sh 2>&1', $out, $ret);
         $msg = $ret === 0 ? 'IP2Location database updated.' : 'Update failed: ' . implode("\n", $out);
+    } elseif ($action === 'save_ip2location_token') {
+        $dir = '/etc/fail2ban/GeoIP';
+        $conf = $dir . '/ip2location.conf';
+        $token = trim($_POST['ip2location_token'] ?? '');
+        $db_dir = '/etc/fail2ban/GeoIP';
+        $old_token = '';
+        if (file_exists($conf)) {
+            $ic = file_get_contents($conf);
+            if (preg_match('/IP2LOCATION_DB_DIR=(.+)$/m', $ic, $m)) $db_dir = trim($m[1]);
+            if (preg_match('/IP2LOCATION_TOKEN=(.+)$/m', $ic, $m)) $old_token = trim($m[1]);
+        }
+        if ($token === '' && $old_token !== '') $token = $old_token;
+        if (!is_dir($dir)) @mkdir($dir, 0755, true);
+        if ((file_exists($conf) && is_writable($conf)) || (!file_exists($conf) && is_writable($dir))) {
+            $content = "IP2LOCATION_TOKEN=" . preg_replace('/[\r\n]/', '', $token) . "\nIP2LOCATION_DB_DIR=" . preg_replace('/[\r\n]/', '', $db_dir) . "\n";
+            if (file_put_contents($conf, $content) !== false) {
+                chmod($conf, 0600);
+                $msg = 'IP2Location token saved.';
+            } else {
+                $msg = 'Could not write ip2location.conf';
+            }
+        } else {
+            $msg = 'Could not write to /etc/fail2ban/GeoIP/';
+        }
+    } elseif ($action === 'setup_ip2location_asn') {
+        $script = '/etc/fail2ban/scripts/setup-ip2location-asn.sh';
+        if (file_exists($script) && is_executable($script)) {
+            exec($script . ' 2>&1', $out, $ret);
+            $msg = $ret === 0 ? 'IP2Location ASN database installed.' : 'Setup failed: ' . implode("\n", $out);
+        } else {
+            $msg = 'setup-ip2location-asn.sh not found. Run setup.sh to deploy.';
+        }
     } elseif ($action === 'unban_whitelisted') {
         $unbanned = 0;
         $wl = array_map('trim', array_filter(explode(',', $_POST['whitelist_countries'] ?? 'IN')));
@@ -465,6 +497,12 @@ if (file_exists($ignore_conf)) {
 }
 if (file_exists($whitelist_conf)) {
     $whitelist_ips = file_get_contents($whitelist_conf);
+}
+$ip2location_conf = '/etc/fail2ban/GeoIP/ip2location.conf';
+$ip2location_token = '';
+if (file_exists($ip2location_conf) && is_readable($ip2location_conf)) {
+    $ic = file_get_contents($ip2location_conf);
+    if (preg_match('/IP2LOCATION_TOKEN=(.+)$/m', $ic, $m)) $ip2location_token = trim($m[1]);
 }
 $blocklist_conf = '/etc/fail2ban/scripts/blocklist-organizations.conf';
 $blocked_organizations = '';
@@ -850,10 +888,34 @@ $js = $jail_settings[$j] ?? ['maxretry' => 5, 'findtime' => 300, 'bantime' => 36
           <input type="hidden" name="tab" value="settings">
           <button type="submit" class="btn btn-primary btn-block">Deploy config &amp; restart</button>
         </form>
-        <form method="post">
+        <form method="post" style="margin-bottom:8px;">
           <input type="hidden" name="action" value="update_ip2location">
           <input type="hidden" name="tab" value="settings">
-          <button type="submit" class="btn btn-default btn-block">Update IP2Location DB</button>
+          <button type="submit" class="btn btn-default btn-block">Update IP2Location DB (country)</button>
+        </form>
+        <form method="post">
+          <input type="hidden" name="action" value="setup_ip2location_asn">
+          <input type="hidden" name="tab" value="settings">
+          <button type="submit" class="btn btn-default btn-block">Run IP2Location ASN setup</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="row" style="margin-top:15px;">
+  <div class="col-md-12">
+    <div class="panel panel-default">
+      <div class="panel-heading">IP2Location Token</div>
+      <div class="panel-body">
+        <p class="text-muted">Token for IP2Location LITE downloads (country + ASN). Get a free token at <a href="https://lite.ip2location.com" target="_blank" rel="noopener">lite.ip2location.com</a>.</p>
+        <form method="post">
+          <input type="hidden" name="action" value="save_ip2location_token">
+          <input type="hidden" name="tab" value="settings">
+          <div class="form-group">
+            <label>IP2Location token</label>
+            <input type="text" name="ip2location_token" value="<?php echo htmlspecialchars($ip2location_token); ?>" class="form-control" placeholder="Your token" style="max-width:400px;">
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm">Save token</button>
         </form>
       </div>
     </div>
