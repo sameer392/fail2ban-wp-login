@@ -43,7 +43,7 @@ done
 mkdir -p "$BKP/action.d"
 [ -f /etc/fail2ban/action.d/csf-domain.conf ] && cp -a /etc/fail2ban/action.d/csf-domain.conf "$BKP/action.d/"
 [ -f /etc/fail2ban/fail2ban.d/loglevel-verbose.conf ] && cp -a /etc/fail2ban/fail2ban.d/loglevel-verbose.conf "$BKP/fail2ban.d/"
-for f in csf-ban.sh ignore-countries.conf setup-ip2location.sh update-ip2location.sh; do
+for f in csf-ban.sh ignore-countries.conf blocklist-organizations.conf setup-ip2location.sh update-ip2location.sh; do
    [ -f "/etc/fail2ban/scripts/$f" ] && cp -a "/etc/fail2ban/scripts/$f" "$BKP/scripts/"
 done
 [ -f /etc/logrotate.d/fail2ban ] && cp -a /etc/logrotate.d/fail2ban "$BKP/" 2>/dev/null || true
@@ -59,6 +59,7 @@ cp -f "$CONFIG_DIR/jail.d/"*.conf /etc/fail2ban/jail.d/
 mkdir -p /etc/fail2ban/scripts
 [ -f "$CONFIG_DIR/scripts/csf-ban.sh" ] && cp -f "$CONFIG_DIR/scripts/csf-ban.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/csf-ban.sh
 [ -f "$CONFIG_DIR/scripts/ignore-countries.conf" ] && cp -f "$CONFIG_DIR/scripts/ignore-countries.conf" /etc/fail2ban/scripts/
+[ -f "$CONFIG_DIR/scripts/blocklist-organizations.conf" ] && cp -f "$CONFIG_DIR/scripts/blocklist-organizations.conf" /etc/fail2ban/scripts/
 [ -f "$CONFIG_DIR/scripts/setup-ip2location.sh" ] && cp -f "$CONFIG_DIR/scripts/setup-ip2location.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/setup-ip2location.sh
 [ -f "$CONFIG_DIR/scripts/update-ip2location.sh" ] && cp -f "$CONFIG_DIR/scripts/update-ip2location.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/update-ip2location.sh
 [ -f "$CONFIG_DIR/fail2ban-logrotate" ] && cp -f "$CONFIG_DIR/fail2ban-logrotate" /etc/logrotate.d/fail2ban

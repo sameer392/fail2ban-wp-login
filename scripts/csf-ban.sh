@@ -1,6 +1,7 @@
 #!/bin/bash
 # Fail2Ban CSF ban helper - adds IP to csf.deny with jail name and affected domain(s)
 # Skips banning IPs from whitelisted countries (see ignore-countries.conf)
+# Exceptions: blocked orgs (blocklist-organizations.conf) and multi-domain abuse
 # Usage: csf-ban.sh <ip> <jail_name>
 # Comment format: Fail2Ban <jail> - <domain1, domain2, ...>
 
@@ -8,6 +9,7 @@ IP="$1"
 JAIL="$2"
 SCRIPT_DIR="$(dirname "$0")"
 CONFIG="${SCRIPT_DIR}/ignore-countries.conf"
+BLOCKLIST_CONFIG="${SCRIPT_DIR}/blocklist-organizations.conf"
 DOMLOGS="${DOMLOGS:-/usr/local/apache/domlogs}"
 
 [ -z "$IP" ] || [ -z "$JAIL" ] && exit 1
@@ -16,11 +18,27 @@ DOMLOGS="${DOMLOGS:-/usr/local/apache/domlogs}"
 [[ "$IP" =~ ^(127\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.) ]] && exit 0
 [[ "$IP" =~ ^(::1|fc00:|fe80:) ]] && exit 0
 
+# Find domains that had traffic from this IP (needed for comment and multi-domain check)
+DOMAINS=""
+DOMAIN_COUNT=0
+if [ -d "$DOMLOGS" ]; then
+    DOMAINS=$(grep -lE "^${IP} " "$DOMLOGS"/*/* 2>/dev/null | while read -r f; do
+        basename "$f" | sed 's/-ssl_log$//'
+    done | sort -u | tr '\n' ',' | sed 's/,$//; s/,/, /g')
+    [ -n "$DOMAINS" ] && DOMAIN_COUNT=$(echo "$DOMAINS" | tr ',' '\n' | wc -l)
+fi
+
 # Load ignored countries
 WHITELIST_COUNTRIES=""
 [ -f "$CONFIG" ] && . "$CONFIG"
 
-# Check country and skip if whitelisted
+# Load blocklist and multi-domain threshold
+BLOCKED_ORGANIZATIONS=""
+MULTI_DOMAIN_ABUSE_THRESHOLD=0
+[ -f "$BLOCKLIST_CONFIG" ] && . "$BLOCKLIST_CONFIG"
+
+# Check country and skip if whitelisted (with exceptions)
+SKIP_BAN=0
 if [ -n "$WHITELIST_COUNTRIES" ]; then
     COUNTRY=""
     # IP2Location LITE DB1 (country lookup via mmdblookup)
@@ -35,22 +53,38 @@ if [ -n "$WHITELIST_COUNTRIES" ]; then
         COUNTRY=$(curl -s --connect-timeout 2 --max-time 4 "http://ip-api.com/json/${IP}?fields=countryCode" 2>/dev/null | grep -o '"countryCode":"[A-Z]*"' | cut -d'"' -f4)
     fi
     if [ -n "$COUNTRY" ]; then
+        IS_WHITELISTED=0
         for c in $(echo "$WHITELIST_COUNTRIES" | tr ',' ' '); do
             c=$(echo "$c" | tr -d ' ')
-            [ "$COUNTRY" = "$c" ] && exit 0
+            [ "$COUNTRY" = "$c" ] && { IS_WHITELISTED=1; break; }
         done
+        if [ "$IS_WHITELISTED" = "1" ]; then
+            SKIP_BAN=1
+            # Exception 1: Multi-domain abuse - whitelisted country but hitting many domains
+            if [ -n "$MULTI_DOMAIN_ABUSE_THRESHOLD" ] && [ "$MULTI_DOMAIN_ABUSE_THRESHOLD" -gt 0 ] 2>/dev/null; then
+                if [ "$DOMAIN_COUNT" -ge "$MULTI_DOMAIN_ABUSE_THRESHOLD" ] 2>/dev/null; then
+                    SKIP_BAN=0
+                fi
+            fi
+            # Exception 2: Blocked organization - ban Microsoft, DigitalOcean, etc.
+            if [ "$SKIP_BAN" = "1" ] && [ -n "$BLOCKED_ORGANIZATIONS" ] && command -v curl &>/dev/null; then
+                ORG_RAW=$(curl -s --connect-timeout 2 --max-time 4 "http://ip-api.com/json/${IP}?fields=org,isp" 2>/dev/null)
+                ORG=$(echo "$ORG_RAW" | grep -oE '"(org|isp)":"[^"]*"' | cut -d'"' -f4 | tr '\n' ' ')
+                for bl in $(echo "$BLOCKED_ORGANIZATIONS" | tr ',' ' '); do
+                    bl=$(echo "$bl" | tr -d ' ')
+                    [ -z "$bl" ] && continue
+                    if echo "$ORG" | grep -qiF "$bl"; then
+                        SKIP_BAN=0
+                        break
+                    fi
+                done
+            fi
+            [ "$SKIP_BAN" = "1" ] && exit 0
+        fi
     else
         # Country lookup failed - skip ban to avoid blocking whitelisted countries
         exit 0
     fi
-fi
-
-# Find domains that had traffic from this IP
-DOMAINS=""
-if [ -d "$DOMLOGS" ]; then
-    DOMAINS=$(grep -lE "^${IP} " "$DOMLOGS"/*/* 2>/dev/null | while read -r f; do
-        basename "$f" | sed 's/-ssl_log$//'
-    done | sort -u | tr '\n' ',' | sed 's/,$//; s/,/, /g')
 fi
 
 # Build comment

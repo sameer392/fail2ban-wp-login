@@ -20,6 +20,7 @@ F2B_ACTIONS=(
    /etc/fail2ban/action.d/csf-domain.conf
    /etc/fail2ban/scripts/csf-ban.sh
    /etc/fail2ban/scripts/ignore-countries.conf
+   /etc/fail2ban/scripts/blocklist-organizations.conf
    /etc/fail2ban/scripts/setup-ip2location.sh
    /etc/fail2ban/scripts/update-ip2location.sh
 )

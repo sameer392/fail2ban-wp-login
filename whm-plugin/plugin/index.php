@@ -32,10 +32,49 @@ function get_ip_country_cache_db() {
     try {
         $pdo = new PDO('sqlite:' . $db_path);
         $pdo->exec("CREATE TABLE IF NOT EXISTS ip_country (ip TEXT PRIMARY KEY, country TEXT NOT NULL, updated_at INTEGER)");
+        $pdo->exec("CREATE TABLE IF NOT EXISTS ip_org (ip TEXT PRIMARY KEY, org TEXT NOT NULL, updated_at INTEGER)");
     } catch (Exception $e) {
         return null;
     }
     return $pdo;
+}
+
+function get_ip_org($ip, &$cache = []) {
+    if (isset($cache[$ip])) return $cache[$ip];
+    if (preg_match('/^(127\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|::1|fc00:|fe80:)/', $ip)) {
+        return $cache[$ip] = '-';
+    }
+    $org = '';
+    $pdo = get_ip_country_cache_db();
+    if ($pdo) {
+        $stmt = $pdo->prepare("SELECT org FROM ip_org WHERE ip = ?");
+        if ($stmt && $stmt->execute([$ip])) {
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($row) return $cache[$ip] = $row['org'];
+        }
+    }
+    if (function_exists('file_get_contents') && ini_get('allow_url_fopen')) {
+        $json = @file_get_contents("http://ip-api.com/json/" . urlencode($ip) . "?fields=org,isp", false, stream_context_create(['http' => ['timeout' => 2]]));
+        if ($json) {
+            if (preg_match('/"org":"([^"]*)"/', $json, $m) && trim($m[1]) !== '') $org = trim($m[1]);
+            elseif (preg_match('/"isp":"([^"]*)"/', $json, $m) && trim($m[1]) !== '') $org = trim($m[1]);
+        }
+    } elseif (function_exists('curl_init')) {
+        $ch = curl_init("http://ip-api.com/json/" . urlencode($ip) . "?fields=org,isp");
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 2]);
+        $json = @curl_exec($ch);
+        curl_close($ch);
+        if ($json) {
+            if (preg_match('/"org":"([^"]*)"/', $json, $m) && trim($m[1]) !== '') $org = trim($m[1]);
+            elseif (preg_match('/"isp":"([^"]*)"/', $json, $m) && trim($m[1]) !== '') $org = trim($m[1]);
+        }
+    }
+    $org = $org ?: '-';
+    if ($pdo) {
+        $stmt = $pdo->prepare("INSERT OR REPLACE INTO ip_org (ip, org, updated_at) VALUES (?, ?, ?)");
+        if ($stmt) @$stmt->execute([$ip, $org, time()]);
+    }
+    return $cache[$ip] = $org;
 }
 
 function get_ip_country($ip, &$cache = []) {
@@ -255,6 +294,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
         } else {
             $msg = 'Could not create /usr/share/fail2ban (run install.sh first)';
         }
+    } elseif ($action === 'save_blocklist_organizations') {
+        $conf = '/etc/fail2ban/scripts/blocklist-organizations.conf';
+        $orgs = trim(preg_replace('/[\r\n]+/', ',', $_POST['blocked_organizations'] ?? ''));
+        $threshold = max(0, min(20, (int)($_POST['multi_domain_threshold'] ?? 0)));
+        $content = "# Blocked organizations - IPs from these orgs/ISPs are ALWAYS banned\n";
+        $content .= "# Comma-separated, case-insensitive. Examples: Microsoft, DigitalOcean, Amazon\nBLOCKED_ORGANIZATIONS=" . preg_replace('/[^a-zA-Z0-9,\s.&-]/', '', $orgs) . "\n\n";
+        $content .= "# Multi-domain abuse: if IP from whitelisted country hits this many domains, ban anyway\nMULTI_DOMAIN_ABUSE_THRESHOLD=" . $threshold . "\n";
+        $dir = dirname($conf);
+        if (!is_dir($dir)) @mkdir($dir, 0755, true);
+        if ((file_exists($conf) && is_writable($conf)) || (!file_exists($conf) && is_dir($dir) && is_writable($dir))) {
+            if (file_put_contents($conf, $content) !== false) {
+                $msg = 'Blocklist and multi-domain threshold saved.';
+            } else {
+                $msg = 'Could not write blocklist-organizations.conf';
+            }
+        } else {
+            $msg = 'Could not write to /etc/fail2ban/scripts/';
+        }
     } elseif ($action === 'deploy') {
         exec('/usr/share/fail2ban/setup.sh 2>&1', $out, $ret);
         $msg = $ret === 0 ? 'Config deployed and fail2ban restarted.' : 'Deploy failed: ' . implode("\n", $out);
@@ -382,6 +439,14 @@ if (file_exists($ignore_conf)) {
 if (file_exists($whitelist_conf)) {
     $whitelist_ips = file_get_contents($whitelist_conf);
 }
+$blocklist_conf = '/etc/fail2ban/scripts/blocklist-organizations.conf';
+$blocked_organizations = '';
+$multi_domain_threshold = 3;
+if (file_exists($blocklist_conf) && is_readable($blocklist_conf)) {
+    $bc = file_get_contents($blocklist_conf);
+    if (preg_match('/BLOCKED_ORGANIZATIONS=(.*)$/m', $bc, $m)) $blocked_organizations = trim($m[1]);
+    if (preg_match('/MULTI_DOMAIN_ABUSE_THRESHOLD=\s*(\d+)/', $bc, $m)) $multi_domain_threshold = max(0, min(20, (int)$m[1]));
+}
 
 function is_geoip_ready() {
     $mmdb = '/etc/fail2ban/GeoIP/IP2LOCATION-LITE-DB1.mmdb';
@@ -436,15 +501,17 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'banned_ips' && isset($_GET['jail'
         if (!empty($d['banned_ips'])) {
             $ban_times = get_ban_times($ajail);
             $domain_cache = [];
-            echo '<table class="table table-bordered table-striped table-condensed banned-ips-table"><thead><tr><th><input type="checkbox" class="select-all-banned" data-jail="' . htmlspecialchars($ajail) . '" data-container="banned-ips-' . htmlspecialchars($ajail) . $fs . '" title="Select all"></th><th>#</th><th>IP Address</th><th>Country</th><th>Affected Domains</th><th>Banned At</th><th>Action</th></tr></thead><tbody>';
+            $org_cache = [];
+            echo '<table class="table table-bordered table-striped table-condensed banned-ips-table"><thead><tr><th><input type="checkbox" class="select-all-banned" data-jail="' . htmlspecialchars($ajail) . '" data-container="banned-ips-' . htmlspecialchars($ajail) . $fs . '" title="Select all"></th><th>#</th><th>IP Address</th><th>Country</th><th>Organization</th><th>Affected Domains</th><th>Banned At</th><th>Action</th></tr></thead><tbody>';
             foreach (array_values($d['banned_ips']) as $i => $ip) {
                 $country = get_ip_country($ip, $country_cache);
+                $org = get_ip_org($ip, $org_cache);
                 $affected = get_affected_domains($ip, $ajail, $domain_cache);
                 $banned_at = $ban_times[$ip] ?? '-';
                 $is_whitelisted = in_array($country, $whitelist_countries_arr);
                 $rowClass = $is_whitelisted ? ' class="warning" style="background:var(--accent-01,#fff3cd)"' : '';
                 $wlLabel = $is_whitelisted ? ' <span class="label label-warning">whitelisted</span>' : '';
-                echo '<tr' . $rowClass . '><td><input type="checkbox" class="banned-ip-cb" name="unban_ips[]" value="' . htmlspecialchars($ip) . '" form="' . htmlspecialchars($form_id) . '"></td><td>' . ($i + 1) . '</td><td><code>' . htmlspecialchars($ip) . '</code></td><td>' . htmlspecialchars($country) . $wlLabel . '</td><td style="max-width:200px;font-size:11px;" title="' . htmlspecialchars($affected) . '">' . htmlspecialchars($affected) . '</td><td>' . htmlspecialchars($banned_at) . '</td><td><form method="post" style="display:inline;margin:0;"><input type="hidden" name="action" value="unban"><input type="hidden" name="tab" value="' . htmlspecialchars($retab) . '"><input type="hidden" name="jail" value="' . htmlspecialchars($ajail) . '"><input type="hidden" name="ip" value="' . htmlspecialchars($ip) . '"><button type="submit" class="btn btn-default btn-xs">Unban</button></form></td></tr>';
+                echo '<tr' . $rowClass . '><td><input type="checkbox" class="banned-ip-cb" name="unban_ips[]" value="' . htmlspecialchars($ip) . '" form="' . htmlspecialchars($form_id) . '"></td><td>' . ($i + 1) . '</td><td><code>' . htmlspecialchars($ip) . '</code></td><td>' . htmlspecialchars($country) . $wlLabel . '</td><td style="max-width:150px;font-size:11px;" title="' . htmlspecialchars($org) . '">' . htmlspecialchars($org) . '</td><td style="max-width:200px;font-size:11px;" title="' . htmlspecialchars($affected) . '">' . htmlspecialchars($affected) . '</td><td>' . htmlspecialchars($banned_at) . '</td><td><form method="post" style="display:inline;margin:0;"><input type="hidden" name="action" value="unban"><input type="hidden" name="tab" value="' . htmlspecialchars($retab) . '"><input type="hidden" name="jail" value="' . htmlspecialchars($ajail) . '"><input type="hidden" name="ip" value="' . htmlspecialchars($ip) . '"><button type="submit" class="btn btn-default btn-xs">Unban</button></form></td></tr>';
             }
             echo '</tbody></table><form id="' . htmlspecialchars($form_id) . '" method="post" style="margin-top:6px;"><input type="hidden" name="action" value="unban_bulk"><input type="hidden" name="tab" value="' . htmlspecialchars($retab) . '"><input type="hidden" name="jail" value="' . htmlspecialchars($ajail) . '"><button type="submit" class="btn btn-warning btn-sm bulk-unban-btn" disabled>Unban selected</button></form>';
         } else {
@@ -550,14 +617,15 @@ $d = $jail_data[$j];
     <div id="banned-ips-<?php echo htmlspecialchars($j); ?>-tab" class="banned-ips-container">
     <?php if (!empty($d['banned_ips'])): $ban_times = get_ban_times($j); $domain_cache = []; ?>
     <table class="table table-bordered table-striped table-condensed banned-ips-table">
-      <thead><tr><th><input type="checkbox" class="select-all-banned" data-jail="<?php echo htmlspecialchars($j); ?>" data-container="banned-ips-<?php echo htmlspecialchars($j); ?>-tab" title="Select all"></th><th>#</th><th>IP Address</th><th>Country</th><th>Affected Domains</th><th>Banned At</th><th>Action</th></tr></thead>
+      <thead><tr><th><input type="checkbox" class="select-all-banned" data-jail="<?php echo htmlspecialchars($j); ?>" data-container="banned-ips-<?php echo htmlspecialchars($j); ?>-tab" title="Select all"></th><th>#</th><th>IP Address</th><th>Country</th><th>Organization</th><th>Affected Domains</th><th>Banned At</th><th>Action</th></tr></thead>
       <tbody>
-      <?php $country_cache = []; foreach (array_values($d['banned_ips']) as $i => $ip): $country = get_ip_country($ip, $country_cache); $affected = get_affected_domains($ip, $j, $domain_cache); $banned_at = $ban_times[$ip] ?? '-'; $is_whitelisted = in_array($country, $whitelist_countries_arr); ?>
+      <?php $country_cache = []; $org_cache = []; foreach (array_values($d['banned_ips']) as $i => $ip): $country = get_ip_country($ip, $country_cache); $org = get_ip_org($ip, $org_cache); $affected = get_affected_domains($ip, $j, $domain_cache); $banned_at = $ban_times[$ip] ?? '-'; $is_whitelisted = in_array($country, $whitelist_countries_arr); ?>
         <tr<?php echo $is_whitelisted ? ' class="warning"' : ''; ?>>
           <td><input type="checkbox" class="banned-ip-cb" name="unban_ips[]" value="<?php echo htmlspecialchars($ip); ?>" form="bulk-unban-<?php echo htmlspecialchars($j); ?>-tab"></td>
           <td><?php echo $i + 1; ?></td>
           <td><code><?php echo htmlspecialchars($ip); ?></code></td>
           <td><?php echo htmlspecialchars($country); ?><?php if ($is_whitelisted): ?> <span class="label label-warning">whitelisted</span><?php endif; ?></td>
+          <td style="max-width:150px;font-size:11px;" title="<?php echo htmlspecialchars($org); ?>"><?php echo htmlspecialchars($org); ?></td>
           <td style="max-width:200px;font-size:11px;" title="<?php echo htmlspecialchars($affected); ?>"><?php echo htmlspecialchars($affected); ?></td>
           <td><?php echo htmlspecialchars($banned_at); ?></td>
           <td>
@@ -622,6 +690,30 @@ $d = $jail_data[$j];
           <input type="hidden" name="tab" value="whitelists">
           <textarea name="whitelist_ips" class="form-control" rows="8" style="font-family:monospace;font-size:12px;"><?php echo htmlspecialchars($whitelist_ips); ?></textarea>
           <button type="submit" class="btn btn-primary btn-sm" style="margin-top:8px;">Save &amp; Deploy</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="row" style="margin-top:15px;">
+  <div class="col-md-12">
+    <div class="panel panel-default">
+      <div class="panel-heading">Blocked Organizations &amp; Multi-Domain Abuse</div>
+      <div class="panel-body">
+        <p class="text-muted">IPs from blocked orgs (e.g. Microsoft, DigitalOcean) are always banned, even from whitelisted countries. If an IP from a whitelisted country hits many domains in short time, it is also banned.</p>
+        <form method="post">
+          <input type="hidden" name="action" value="save_blocklist_organizations">
+          <input type="hidden" name="tab" value="whitelists">
+          <div class="form-group">
+            <label>Blocked organizations (comma-separated)</label>
+            <input type="text" name="blocked_organizations" value="<?php echo htmlspecialchars($blocked_organizations); ?>" class="form-control" placeholder="Microsoft, DigitalOcean, Amazon" style="max-width:500px;">
+          </div>
+          <div class="form-group">
+            <label>Multi-domain abuse threshold</label>
+            <input type="number" name="multi_domain_threshold" value="<?php echo (int)$multi_domain_threshold; ?>" min="0" max="20" class="form-control" style="width:80px;" title="Ban whitelisted-country IPs that hit this many domains">
+            <span class="text-muted" style="margin-left:8px;">(0 = disabled)</span>
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm">Save</button>
         </form>
       </div>
     </div>
