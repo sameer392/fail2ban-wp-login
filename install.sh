@@ -80,6 +80,7 @@ mkdir -p /etc/fail2ban/scripts
 [ -f "$CONFIG_DIR/scripts/update-ip2location.sh" ] && cp -f "$CONFIG_DIR/scripts/update-ip2location.sh" /etc/fail2ban/scripts/
 [ -f "$CONFIG_DIR/scripts/setup-ip2location-asn.sh" ] && cp -f "$CONFIG_DIR/scripts/setup-ip2location-asn.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/setup-ip2location-asn.sh && chmod +x /etc/fail2ban/scripts/update-ip2location.sh
 [ -f "$CONFIG_DIR/scripts/update-useragent-jails.sh" ] && cp -f "$CONFIG_DIR/scripts/update-useragent-jails.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/update-useragent-jails.sh
+[ -f "$CONFIG_DIR/scripts/update-from-github.sh" ] && cp -f "$CONFIG_DIR/scripts/update-from-github.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/update-from-github.sh
 [ -f "$CONFIG_DIR/fail2ban-logrotate" ] && cp -f "$CONFIG_DIR/fail2ban-logrotate" /etc/logrotate.d/fail2ban && echo "      Logrotate config installed."
 echo "      Config deployed."
 
@@ -123,12 +124,23 @@ systemctl restart fail2ban
 sleep 3
 echo "      fail2ban enabled and restarted."
 
-# 7. Install WHM plugin (if cPanel present)
+# 7. Install/update WHM plugin (if cPanel present)
 echo "[7/8] Installing WHM plugin..."
-if [ -x /usr/local/cpanel/bin/register_appconfig ] && [ -f "$CONFIG_DIR/whm-plugin/install-whm-plugin.sh" ]; then
-   (cd "$CONFIG_DIR/whm-plugin" && ./install-whm-plugin.sh) || echo "      WHM plugin install skipped or failed."
+WHM_PLUGIN_SRC="$CONFIG_DIR/whm-plugin/plugin"
+WHM_PLUGIN_DST="/usr/local/cpanel/whostmgr/docroot/cgi/fail2ban_manager"
+if [ -d "$WHM_PLUGIN_SRC" ] && [ -f "$WHM_PLUGIN_SRC/index.php" ]; then
+   mkdir -p "$WHM_PLUGIN_DST"
+   cp -f "$WHM_PLUGIN_SRC/index.php" "$WHM_PLUGIN_SRC/fail2ban_manager.png" "$WHM_PLUGIN_DST/"
+   chmod 755 "$WHM_PLUGIN_DST/index.php"
+   [ -f "$WHM_PLUGIN_DST/fail2ban_manager.png" ] && chmod 644 "$WHM_PLUGIN_DST/fail2ban_manager.png"
+   [ -d /usr/local/cpanel/whostmgr/docroot/addon_plugins ] && cp -f "$WHM_PLUGIN_SRC/fail2ban_manager.png" /usr/local/cpanel/whostmgr/docroot/addon_plugins/ 2>/dev/null && chmod 644 /usr/local/cpanel/whostmgr/docroot/addon_plugins/fail2ban_manager.png
+   if [ -x /usr/local/cpanel/bin/register_appconfig ] && [ -f "$WHM_PLUGIN_SRC/fail2ban_manager.conf" ]; then
+      /usr/local/cpanel/bin/register_appconfig "$WHM_PLUGIN_SRC/fail2ban_manager.conf"
+   fi
+   systemctl restart cpanel 2>/dev/null || [ -x /usr/local/cpanel/scripts/restartsrv_cpsrvd ] && /usr/local/cpanel/scripts/restartsrv_cpsrvd 2>/dev/null || true
+   echo "      WHM plugin installed."
 else
-   echo "      Skipped (cPanel not detected or plugin not found)."
+   echo "      Skipped (WHM plugin source not found)."
 fi
 
 # 8. Status
