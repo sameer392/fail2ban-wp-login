@@ -149,7 +149,7 @@ Attacker → Internet → Server
 
 | File | Purpose |
 |------|---------|
-| filter.d/wordpress-wp-login.conf | Match GET/POST to wp-login.php |
+| filter.d/wordpress-wp-login.conf | Match POST to wp-login.php (login attempts only; GET ignored) |
 | filter.d/apache-high-volume.conf | Match all requests; ignoreregex excludes crawlers (Google, Bing, Facebook) + whitelist IPs |
 | jail.d/*.conf | Jail definitions (backend=polling, logpath, banaction) |
 | action.d/csf-domain.conf | Custom action: actionban → csf-ban.sh, actionunban → csf -dr |
