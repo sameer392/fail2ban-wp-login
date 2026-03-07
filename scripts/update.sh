@@ -35,7 +35,7 @@ TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 echo "[1/5] Backing up current config..."
 mkdir -p "$BACKUP_DIR"
 BKP="$BACKUP_DIR/$TIMESTAMP"
-mkdir -p "$BKP/filter.d" "$BKP/jail.d" "$BKP/fail2ban.d" "$BKP/scripts"
+mkdir -p "$BKP/filter.d" "$BKP/jail.d" "$BKP/fail2ban.d" "$BKP/scripts" "$BKP/conf.d"
 for f in /etc/fail2ban/filter.d/wordpress-wp-login.conf /etc/fail2ban/filter.d/apache-high-volume.conf; do
    [ -f "$f" ] && cp -a "$f" "$BKP/filter.d/"
 done
@@ -45,9 +45,10 @@ done
 mkdir -p "$BKP/action.d"
 [ -f /etc/fail2ban/action.d/csf-domain.conf ] && cp -a /etc/fail2ban/action.d/csf-domain.conf "$BKP/action.d/"
 [ -f /etc/fail2ban/fail2ban.d/loglevel-verbose.conf ] && cp -a /etc/fail2ban/fail2ban.d/loglevel-verbose.conf "$BKP/fail2ban.d/"
-for f in csf-ban.sh ignore-countries.conf blocklist-organizations.conf excluded-domains.conf setup-ip2location.sh setup-ip2location-asn.sh update-ip2location.sh; do
+for f in csf-ban.sh setup-ip2location.sh setup-ip2location-asn.sh update-ip2location.sh; do
    [ -f "/etc/fail2ban/scripts/$f" ] && cp -a "/etc/fail2ban/scripts/$f" "$BKP/scripts/"
 done
+[ -d /etc/fail2ban/conf.d ] && for f in /etc/fail2ban/conf.d/*.conf; do [ -f "$f" ] && cp -a "$f" "$BKP/conf.d/" 2>/dev/null || true; done
 [ -f /etc/fail2ban/jail.d/99-domlog-logpath.conf ] && cp -a /etc/fail2ban/jail.d/99-domlog-logpath.conf "$BKP/jail.d/" 2>/dev/null || true
 [ -f /etc/logrotate.d/fail2ban ] && cp -a /etc/logrotate.d/fail2ban "$BKP/" 2>/dev/null || true
 echo "      Backup: $BKP"
@@ -57,17 +58,28 @@ ls -dt "$BACKUP_DIR"/[0-9]*-[0-9]* 2>/dev/null | tail -n +11 | xargs -r rm -rf
 # When running from repo, sync source to /usr/share/fail2ban/ so update-from-github.sh is available
 if [ "$CONFIG_DIR" != "$INSTALL_DIR" ] && [ -d "$CONFIG_DIR" ]; then
    mkdir -p "$INSTALL_DIR"
-   for d in filter.d jail.d action.d fail2ban.d scripts whm-plugin; do
+   for d in filter.d jail.d action.d fail2ban.d conf.d scripts whm-plugin; do
       [ -d "$CONFIG_DIR/$d" ] || continue
       mkdir -p "$INSTALL_DIR/$d"
       for f in "$CONFIG_DIR/$d"/*; do [ -f "$f" ] && cp -f "$f" "$INSTALL_DIR/$d/"; done
       [ "$d" = "whm-plugin" ] && [ -d "$CONFIG_DIR/whm-plugin/plugin" ] && mkdir -p "$INSTALL_DIR/whm-plugin/plugin" && for f in "$CONFIG_DIR/whm-plugin/plugin"/*; do [ -f "$f" ] && cp -f "$f" "$INSTALL_DIR/whm-plugin/plugin/"; done
    done
-   for f in whitelist-ips.conf fail2ban-logrotate; do
+   for f in fail2ban-logrotate; do
       [ -f "$CONFIG_DIR/$f" ] && cp -f "$CONFIG_DIR/$f" "$INSTALL_DIR/"
    done
    chmod +x "$INSTALL_DIR/scripts"/*.sh 2>/dev/null || true
 fi
+
+# Migrate old conf files to conf.d/ if present
+mkdir -p /etc/fail2ban/conf.d
+for oldconf in ignore-countries.conf blocklist-organizations.conf excluded-domains.conf; do
+   newconf="$oldconf"
+   [ "$oldconf" = "ignore-countries.conf" ] && newconf="whitelist-countries.conf"
+   [ "$oldconf" = "excluded-domains.conf" ] && newconf="whitelist-domains.conf"
+   [ -f "/etc/fail2ban/scripts/$oldconf" ] && [ ! -f "/etc/fail2ban/conf.d/$newconf" ] && mv "/etc/fail2ban/scripts/$oldconf" "/etc/fail2ban/conf.d/$newconf" 2>/dev/null || true
+   [ -f "/etc/fail2ban/scripts/configurations/$oldconf" ] && [ ! -f "/etc/fail2ban/conf.d/$newconf" ] && mv "/etc/fail2ban/scripts/configurations/$oldconf" "/etc/fail2ban/conf.d/$newconf" 2>/dev/null || true
+done
+[ -f "/usr/share/fail2ban/whitelist-ips.conf" ] && [ ! -f "/usr/share/fail2ban/conf.d/whitelist-ips.conf" ] && mkdir -p /usr/share/fail2ban/conf.d && mv /usr/share/fail2ban/whitelist-ips.conf /usr/share/fail2ban/conf.d/ 2>/dev/null || true
 
 echo "[2/5] Deploying config to /etc/fail2ban/..."
 cp -f "$CONFIG_DIR/filter.d/"*.conf /etc/fail2ban/filter.d/
@@ -76,14 +88,16 @@ cp -f "$CONFIG_DIR/jail.d/"*.conf /etc/fail2ban/jail.d/
 [ -f "$CONFIG_DIR/fail2ban.d/loglevel-verbose.conf" ] && cp -f "$CONFIG_DIR/fail2ban.d/loglevel-verbose.conf" /etc/fail2ban/fail2ban.d/
 mkdir -p /etc/fail2ban/scripts
 [ -f "$CONFIG_DIR/scripts/csf-ban.sh" ] && cp -f "$CONFIG_DIR/scripts/csf-ban.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/csf-ban.sh
-[ -f "$CONFIG_DIR/scripts/ignore-countries.conf" ] && cp -f "$CONFIG_DIR/scripts/ignore-countries.conf" /etc/fail2ban/scripts/
-[ -f "$CONFIG_DIR/scripts/blocklist-organizations.conf" ] && cp -f "$CONFIG_DIR/scripts/blocklist-organizations.conf" /etc/fail2ban/scripts/
+mkdir -p /etc/fail2ban/conf.d
+[ -f "$CONFIG_DIR/conf.d/whitelist-countries.conf" ] && cp -f "$CONFIG_DIR/conf.d/whitelist-countries.conf" /etc/fail2ban/conf.d/
+[ -f "$CONFIG_DIR/conf.d/blocklist-organizations.conf" ] && cp -f "$CONFIG_DIR/conf.d/blocklist-organizations.conf" /etc/fail2ban/conf.d/
 [ -f "$CONFIG_DIR/scripts/setup-ip2location.sh" ] && cp -f "$CONFIG_DIR/scripts/setup-ip2location.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/setup-ip2location.sh
 [ -f "$CONFIG_DIR/scripts/update-ip2location.sh" ] && cp -f "$CONFIG_DIR/scripts/update-ip2location.sh" /etc/fail2ban/scripts/
 [ -f "$CONFIG_DIR/scripts/setup-ip2location-asn.sh" ] && cp -f "$CONFIG_DIR/scripts/setup-ip2location-asn.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/setup-ip2location-asn.sh && chmod +x /etc/fail2ban/scripts/update-ip2location.sh
 [ -f "$CONFIG_DIR/scripts/update-useragent-jails.sh" ] && cp -f "$CONFIG_DIR/scripts/update-useragent-jails.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/update-useragent-jails.sh
 [ -f "$CONFIG_DIR/scripts/update-from-github.sh" ] && cp -f "$CONFIG_DIR/scripts/update-from-github.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/update-from-github.sh
-[ -f "$CONFIG_DIR/scripts/excluded-domains.conf" ] && cp -f "$CONFIG_DIR/scripts/excluded-domains.conf" /etc/fail2ban/scripts/
+[ -f "$CONFIG_DIR/conf.d/whitelist-domains.conf" ] && cp -f "$CONFIG_DIR/conf.d/whitelist-domains.conf" /etc/fail2ban/conf.d/
+[ -f "$CONFIG_DIR/conf.d/whitelist-ips.conf" ] && cp -f "$CONFIG_DIR/conf.d/whitelist-ips.conf" /etc/fail2ban/conf.d/
 [ -f "$CONFIG_DIR/scripts/generate-logpath.sh" ] && cp -f "$CONFIG_DIR/scripts/generate-logpath.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/generate-logpath.sh
 [ -f "$CONFIG_DIR/fail2ban-logrotate" ] && cp -f "$CONFIG_DIR/fail2ban-logrotate" /etc/logrotate.d/fail2ban
 echo "      Config deployed."

@@ -36,25 +36,31 @@ SRC=$(ls -1d */ 2>/dev/null | head -1 | tr -d '/')
 echo "Backing up user configs..."
 BACKUP="$TMP_DIR/backup"
 mkdir -p "$BACKUP"
-[ -f "$INSTALL_DIR/whitelist-ips.conf" ] && cp -a "$INSTALL_DIR/whitelist-ips.conf" "$BACKUP/"
-[ -f /etc/fail2ban/scripts/ignore-countries.conf ] && cp -a /etc/fail2ban/scripts/ignore-countries.conf "$BACKUP/"
-[ -f /etc/fail2ban/scripts/blocklist-organizations.conf ] && cp -a /etc/fail2ban/scripts/blocklist-organizations.conf "$BACKUP/" 2>/dev/null || true
-[ -f /etc/fail2ban/scripts/excluded-domains.conf ] && cp -a /etc/fail2ban/scripts/excluded-domains.conf "$BACKUP/" 2>/dev/null || true
-[ -f /etc/fail2ban/scripts/email-alerts.conf ] && cp -a /etc/fail2ban/scripts/email-alerts.conf "$BACKUP/" 2>/dev/null || true
+# New layout (conf.d)
+[ -f "$INSTALL_DIR/conf.d/whitelist-ips.conf" ] && cp -a "$INSTALL_DIR/conf.d/whitelist-ips.conf" "$BACKUP/"
+[ -d /etc/fail2ban/conf.d ] && for f in /etc/fail2ban/conf.d/*.conf; do [ -f "$f" ] && cp -a "$f" "$BACKUP/" 2>/dev/null || true; done
+# Old layout (scripts/configurations, root whitelist-ips.conf)
+[ -f "$INSTALL_DIR/scripts/configurations/whitelist-ips.conf" ] && [ ! -f "$BACKUP/whitelist-ips.conf" ] && cp -a "$INSTALL_DIR/scripts/configurations/whitelist-ips.conf" "$BACKUP/"
+[ -f "$INSTALL_DIR/whitelist-ips.conf" ] && [ ! -f "$BACKUP/whitelist-ips.conf" ] && cp -a "$INSTALL_DIR/whitelist-ips.conf" "$BACKUP/"
+[ -d /etc/fail2ban/scripts/configurations ] && for f in /etc/fail2ban/scripts/configurations/*.conf; do
+   [ -f "$f" ] || continue
+   bn=$(basename "$f")
+   [ "$bn" = "ignore-countries.conf" ] && bn="whitelist-countries.conf"
+   [ "$bn" = "excluded-domains.conf" ] && bn="whitelist-domains.conf"
+   [ ! -f "$BACKUP/$bn" ] && cp -a "$f" "$BACKUP/$bn" 2>/dev/null || true
+done
 
 echo "Installing files..."
-rsync -a --exclude='.git' --exclude='whitelist-ips.conf' "$SRC/" "$INSTALL_DIR/"
+rsync -a --exclude='.git' "$SRC/" "$INSTALL_DIR/"
 chmod +x "$INSTALL_DIR/scripts"/*.sh 2>/dev/null || true
-[ -f "$BACKUP/whitelist-ips.conf" ] && cp -a "$BACKUP/whitelist-ips.conf" "$INSTALL_DIR/"
+[ -f "$BACKUP/whitelist-ips.conf" ] && mkdir -p "$INSTALL_DIR/conf.d" && cp -a "$BACKUP/whitelist-ips.conf" "$INSTALL_DIR/conf.d/"
 
 echo "Running setup..."
 (cd "$INSTALL_DIR" && ./scripts/update.sh)
 
 echo "Restoring user configs..."
-[ -f "$BACKUP/ignore-countries.conf" ] && cp -a "$BACKUP/ignore-countries.conf" /etc/fail2ban/scripts/
-[ -f "$BACKUP/blocklist-organizations.conf" ] && cp -a "$BACKUP/blocklist-organizations.conf" /etc/fail2ban/scripts/ 2>/dev/null || true
-[ -f "$BACKUP/excluded-domains.conf" ] && cp -a "$BACKUP/excluded-domains.conf" /etc/fail2ban/scripts/ 2>/dev/null || true
-[ -f "$BACKUP/email-alerts.conf" ] && cp -a "$BACKUP/email-alerts.conf" /etc/fail2ban/scripts/ 2>/dev/null || true
+mkdir -p /etc/fail2ban/conf.d
+for f in "$BACKUP"/*.conf; do [ -f "$f" ] && cp -a "$f" /etc/fail2ban/conf.d/ 2>/dev/null || true; done
 
 echo "Installing WHM plugin..."
 [ -x "$INSTALL_DIR/whm-plugin/install-whm-plugin.sh" ] && (cd "$INSTALL_DIR/whm-plugin" && ./install-whm-plugin.sh) || true

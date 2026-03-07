@@ -22,7 +22,20 @@ echo "=== Restoring from $BKP ==="
 [ -d "$BKP/jail.d" ] && cp -f "$BKP/jail.d/"*.conf /etc/fail2ban/jail.d/ 2>/dev/null || true
 [ -f "$BKP/action.d/csf-domain.conf" ] && cp -f "$BKP/action.d/csf-domain.conf" /etc/fail2ban/action.d/
 [ -f "$BKP/fail2ban.d/loglevel-verbose.conf" ] && cp -f "$BKP/fail2ban.d/loglevel-verbose.conf" /etc/fail2ban/fail2ban.d/
-[ -d "$BKP/scripts" ] && for f in "$BKP/scripts/"*; do [ -f "$f" ] && cp -f "$f" /etc/fail2ban/scripts/ && chmod +x "/etc/fail2ban/scripts/$(basename "$f")" 2>/dev/null || true; done
+[ -d "$BKP/scripts" ] && for f in "$BKP/scripts/"*; do [ -f "$f" ] && cp -f "$f" /etc/fail2ban/scripts/ && [[ "$f" == *.sh ]] && chmod +x "/etc/fail2ban/scripts/$(basename "$f")" 2>/dev/null || true; done
+# Restore conf.d (new layout); fallback: scripts/configurations for old backups
+if [ -d "$BKP/conf.d" ]; then
+   mkdir -p /etc/fail2ban/conf.d && for f in "$BKP/conf.d/"*.conf; do [ -f "$f" ] && cp -f "$f" /etc/fail2ban/conf.d/ 2>/dev/null || true; done
+elif [ -d "$BKP/scripts/configurations" ]; then
+   mkdir -p /etc/fail2ban/conf.d
+   for f in "$BKP/scripts/configurations/"*; do
+      [ -f "$f" ] || continue
+      bn=$(basename "$f")
+      [ "$bn" = "ignore-countries.conf" ] && bn="whitelist-countries.conf"
+      [ "$bn" = "excluded-domains.conf" ] && bn="whitelist-domains.conf"
+      cp -f "$f" "/etc/fail2ban/conf.d/$bn" 2>/dev/null || true
+   done
+fi
 [ -f "$BKP/fail2ban" ] && cp -f "$BKP/fail2ban" /etc/logrotate.d/fail2ban 2>/dev/null || true
 echo "Config restored. Restarting fail2ban..."
 systemctl restart fail2ban

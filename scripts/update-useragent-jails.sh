@@ -4,7 +4,7 @@
 # Format per line: keyword|maxretry|findtime|bantime (pipe-separated)
 # Example: python|1|60|3600
 
-CONFIG="/etc/fail2ban/scripts/useragent-keywords.conf"
+CONFIG="/etc/fail2ban/conf.d/useragent-keywords.conf"
 FILTER_DIR="/etc/fail2ban/filter.d"
 JAIL_DIR="/etc/fail2ban/jail.d"
 LOGPATH="/usr/local/apache/domlogs/*/*"

@@ -11,7 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="/usr/share/fail2ban"
 [[ "$SCRIPT_DIR" == */scripts ]] && CONFIG_DIR="$(dirname "$SCRIPT_DIR")" || CONFIG_DIR="$SCRIPT_DIR"
 [ -d "$INSTALL_DIR" ] || INSTALL_DIR="$CONFIG_DIR"
-WHITELIST="$CONFIG_DIR/whitelist-ips.conf"
+WHITELIST="$CONFIG_DIR/conf.d/whitelist-ips.conf"
 FILTER="$CONFIG_DIR/filter.d/apache-high-volume.conf"
 
 # Built-in crawler exclusions (same as find_suspicious_ips.sh)

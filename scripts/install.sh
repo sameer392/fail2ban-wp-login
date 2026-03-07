@@ -35,7 +35,7 @@ if [ "$SCRIPT_SRC" != "$INSTALL_DIR" ]; then
    echo "[0/7] Installing to $INSTALL_DIR..."
    mkdir -p "$INSTALL_DIR"
    updated=0
-   for d in filter.d jail.d action.d fail2ban.d scripts whm-plugin; do
+   for d in filter.d jail.d action.d fail2ban.d conf.d scripts whm-plugin; do
       if [ -d "$SCRIPT_SRC/$d" ]; then
          for f in "$SCRIPT_SRC/$d"/*; do
             [ -f "$f" ] || continue
@@ -56,7 +56,7 @@ if [ "$SCRIPT_SRC" != "$INSTALL_DIR" ]; then
    for f in install.sh update.sh uninstall.sh restore-backup.sh update-whitelist.sh status.sh; do
       [ -f "$SCRIPT_SRC/scripts/$f" ] && copy_if_changed "$SCRIPT_SRC/scripts/$f" "$INSTALL_DIR/scripts/$f" && updated=1
    done
-   for f in whitelist-ips.conf fail2ban-logrotate; do
+   for f in fail2ban-logrotate; do
       [ -f "$SCRIPT_SRC/$f" ] && copy_if_changed "$SCRIPT_SRC/$f" "$INSTALL_DIR/$f" && updated=1
    done
    [ "$updated" -eq 1 ] && echo "      Source installed/updated." || echo "      Source unchanged (already up to date)."
@@ -88,14 +88,16 @@ cp -f "$CONFIG_DIR/jail.d/"*.conf /etc/fail2ban/jail.d/
 [ -f "$CONFIG_DIR/fail2ban.d/loglevel-verbose.conf" ] && cp -f "$CONFIG_DIR/fail2ban.d/loglevel-verbose.conf" /etc/fail2ban/fail2ban.d/
 mkdir -p /etc/fail2ban/scripts
 [ -f "$CONFIG_DIR/scripts/csf-ban.sh" ] && cp -f "$CONFIG_DIR/scripts/csf-ban.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/csf-ban.sh
-[ -f "$CONFIG_DIR/scripts/ignore-countries.conf" ] && cp -f "$CONFIG_DIR/scripts/ignore-countries.conf" /etc/fail2ban/scripts/
-[ -f "$CONFIG_DIR/scripts/blocklist-organizations.conf" ] && cp -f "$CONFIG_DIR/scripts/blocklist-organizations.conf" /etc/fail2ban/scripts/
+mkdir -p /etc/fail2ban/conf.d
+[ -f "$CONFIG_DIR/conf.d/whitelist-countries.conf" ] && cp -f "$CONFIG_DIR/conf.d/whitelist-countries.conf" /etc/fail2ban/conf.d/
+[ -f "$CONFIG_DIR/conf.d/blocklist-organizations.conf" ] && cp -f "$CONFIG_DIR/conf.d/blocklist-organizations.conf" /etc/fail2ban/conf.d/
 [ -f "$CONFIG_DIR/scripts/setup-ip2location.sh" ] && cp -f "$CONFIG_DIR/scripts/setup-ip2location.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/setup-ip2location.sh
 [ -f "$CONFIG_DIR/scripts/update-ip2location.sh" ] && cp -f "$CONFIG_DIR/scripts/update-ip2location.sh" /etc/fail2ban/scripts/
 [ -f "$CONFIG_DIR/scripts/setup-ip2location-asn.sh" ] && cp -f "$CONFIG_DIR/scripts/setup-ip2location-asn.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/setup-ip2location-asn.sh && chmod +x /etc/fail2ban/scripts/update-ip2location.sh
 [ -f "$CONFIG_DIR/scripts/update-useragent-jails.sh" ] && cp -f "$CONFIG_DIR/scripts/update-useragent-jails.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/update-useragent-jails.sh
 [ -f "$CONFIG_DIR/scripts/update-from-github.sh" ] && cp -f "$CONFIG_DIR/scripts/update-from-github.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/update-from-github.sh
-[ -f "$CONFIG_DIR/scripts/excluded-domains.conf" ] && cp -f "$CONFIG_DIR/scripts/excluded-domains.conf" /etc/fail2ban/scripts/
+[ -f "$CONFIG_DIR/conf.d/whitelist-domains.conf" ] && cp -f "$CONFIG_DIR/conf.d/whitelist-domains.conf" /etc/fail2ban/conf.d/
+[ -f "$CONFIG_DIR/conf.d/whitelist-ips.conf" ] && cp -f "$CONFIG_DIR/conf.d/whitelist-ips.conf" /etc/fail2ban/conf.d/
 [ -f "$CONFIG_DIR/scripts/generate-logpath.sh" ] && cp -f "$CONFIG_DIR/scripts/generate-logpath.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/generate-logpath.sh
 [ -f "$CONFIG_DIR/fail2ban-logrotate" ] && cp -f "$CONFIG_DIR/fail2ban-logrotate" /etc/logrotate.d/fail2ban && echo "      Logrotate config installed."
 [ -x /etc/fail2ban/scripts/generate-logpath.sh ] && /etc/fail2ban/scripts/generate-logpath.sh || true
@@ -116,7 +118,7 @@ else
    echo "      libmaxminddb already installed."
 fi
 
-# 4. Setup IP2Location (country lookup for ignore-countries)
+# 4. Setup IP2Location (country lookup for whitelist-countries)
 echo "[4/7] Setting up IP2Location LITE DB1..."
 if [ -f "$CONFIG_DIR/scripts/setup-ip2location.sh" ]; then
    "$CONFIG_DIR/scripts/setup-ip2location.sh" || echo "      IP2Location setup skipped or failed; ip-api.com fallback will be used."

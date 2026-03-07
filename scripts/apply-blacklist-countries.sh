@@ -3,7 +3,7 @@
 # Blocks all traffic from listed countries at the firewall
 # Usage: run as root. Called on save from WHM or by update.sh
 
-CONFIG="/etc/fail2ban/scripts/blacklist-countries.conf"
+CONFIG="/etc/fail2ban/conf.d/blacklist-countries.conf"
 CSF_CONF="/etc/csf/csf.conf"
 
 [ "$EUID" -eq 0 ] || { echo "Run as root"; exit 1; }

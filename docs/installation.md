@@ -32,7 +32,7 @@ Copies filters, jails, actions, scripts, and logrotate config from `/usr/share/f
 /usr/share/fail2ban/scripts/update-from-github.sh v1.0.1
 ```
 
-Downloads the release by tag from GitHub's auto-generated source archive, installs to `/usr/share/fail2ban/`, restores user configs (whitelist-ips.conf, ignore-countries.conf, etc.), and runs update.sh. Also available via WHM → Fail2Ban Manager → Update tab.
+Downloads the release by tag from GitHub's auto-generated source archive, installs to `/usr/share/fail2ban/`, restores user configs (whitelist-ips.conf, whitelist-countries.conf, etc.), and runs update.sh. Also available via WHM → Fail2Ban Manager → Update tab.
 
 ## Uninstall
 

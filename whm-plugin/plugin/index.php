@@ -427,7 +427,7 @@ function save_jail_settings($jail, $maxretry, $findtime, $bantime) {
 }
 
 function get_useragent_keywords() {
-    $conf = '/etc/fail2ban/scripts/useragent-keywords.conf';
+    $conf = '/etc/fail2ban/conf.d/useragent-keywords.conf';
     $rows = [];
     if (!file_exists($conf) || !is_readable($conf)) return $rows;
     foreach (file($conf, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
@@ -485,17 +485,17 @@ $tab_from_action = ['save_ignore_countries' => 'whitelists', 'save_whitelist_ips
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
     if ($action === 'save_ignore_countries') {
         $val = trim($_POST['whitelist_countries'] ?? '');
-        $conf = '/etc/fail2ban/scripts/ignore-countries.conf';
+        $conf = '/etc/fail2ban/conf.d/whitelist-countries.conf';
         if (file_exists($conf) && is_writable($conf)) {
             $content = "# Countries to exclude from bans (ISO 3166-1 alpha-2 codes, comma-separated)\n# Example: IN = India, US = United States\n# Leave empty to ban all countries\nWHITELIST_COUNTRIES=" . preg_replace('/[^A-Za-z,]/', '', $val) . "\n";
             file_put_contents($conf, $content);
             $msg = 'Ignore countries saved.';
         } else {
-            $msg = 'Could not write ignore-countries.conf';
+            $msg = 'Could not write whitelist-countries.conf';
         }
     } elseif ($action === 'save_whitelist_ips') {
         $val = $_POST['whitelist_ips'] ?? '';
-        $conf = '/usr/share/fail2ban/whitelist-ips.conf';
+        $conf = '/usr/share/fail2ban/conf.d/whitelist-ips.conf';
         $dir = dirname($conf);
         if (is_dir($dir) || @mkdir($dir, 0755, true)) {
             if (file_put_contents($conf, $val) !== false) {
@@ -508,10 +508,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
                 $msg = 'Could not write whitelist-ips.conf';
             }
         } else {
-            $msg = 'Could not create /usr/share/fail2ban (run install.sh first)';
+            $msg = 'Could not create /usr/share/fail2ban/conf.d (run install.sh first)';
         }
     } elseif ($action === 'save_blocklist_organizations') {
-        $conf = '/etc/fail2ban/scripts/blocklist-organizations.conf';
+        $conf = '/etc/fail2ban/conf.d/blocklist-organizations.conf';
         $orgs = trim(preg_replace('/[\r\n]+/', ',', $_POST['blocked_organizations'] ?? ''));
         $threshold = max(0, min(20, (int)($_POST['multi_domain_threshold'] ?? 0)));
         $content = "# Blocked organizations - IPs from these orgs/ISPs are ALWAYS banned\n";
@@ -526,7 +526,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
                 $msg = 'Could not write blocklist-organizations.conf';
             }
         } else {
-            $msg = 'Could not write to /etc/fail2ban/scripts/';
+            $msg = 'Could not write to /etc/fail2ban/conf.d/';
         }
     } elseif ($action === 'save_blacklist_countries') {
         $csf_conf = '/etc/csf/csf.conf';
@@ -555,7 +555,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
             }
         }
     } elseif ($action === 'save_excluded_domains') {
-        $conf = '/etc/fail2ban/scripts/excluded-domains.conf';
+        $conf = '/etc/fail2ban/scripts/configurations/excluded-domains.conf';
         $users = trim(preg_replace('/[^a-zA-Z0-9_,\s.-]/', '', $_POST['excluded_users'] ?? ''));
         $domains = trim(preg_replace('/[^a-zA-Z0-9_,\s.-]/', '', $_POST['excluded_domains'] ?? ''));
         $users = preg_replace('/[\s,]+/', ',', $users);
@@ -580,13 +580,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
                     $msg = 'Excluded domains saved; run update.sh to apply.';
                 }
             } else {
-                $msg = 'Could not write excluded-domains.conf';
+                $msg = 'Could not write whitelist-domains.conf';
             }
         } else {
-            $msg = 'Could not write to /etc/fail2ban/scripts/';
+            $msg = 'Could not write to /etc/fail2ban/conf.d/';
         }
     } elseif ($action === 'save_useragent_keywords') {
-        $conf = '/etc/fail2ban/scripts/useragent-keywords.conf';
+        $conf = '/etc/fail2ban/conf.d/useragent-keywords.conf';
         $dir = dirname($conf);
         $lines = [];
         $raw = $_POST['useragent_keywords'] ?? '';
@@ -728,7 +728,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
             $msg = "Invalid log level.";
         }
     } elseif ($action === 'save_email_alerts') {
-        $conf = '/etc/fail2ban/scripts/email-alerts.conf';
+        $conf = '/etc/fail2ban/conf.d/email-alerts.conf';
         $scripts_dir = '/etc/fail2ban/scripts';
         if (!is_dir($scripts_dir)) @mkdir($scripts_dir, 0755, true);
         $enabled = trim($_POST['email_alerts_enabled'] ?? '') === '1';
@@ -797,8 +797,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
     }
 }
 
-$ignore_conf = '/etc/fail2ban/scripts/ignore-countries.conf';
-$whitelist_conf = '/usr/share/fail2ban/whitelist-ips.conf';
+$ignore_conf = file_exists('/etc/fail2ban/conf.d/whitelist-countries.conf') ? '/etc/fail2ban/conf.d/whitelist-countries.conf' : '/etc/fail2ban/scripts/configurations/ignore-countries.conf';
+$whitelist_conf = file_exists('/usr/share/fail2ban/conf.d/whitelist-ips.conf') ? '/usr/share/fail2ban/conf.d/whitelist-ips.conf' : '/usr/share/fail2ban/scripts/configurations/whitelist-ips.conf';
 $ignore_countries = '';
 $whitelist_countries_arr = [];
 $whitelist_ips = '';
@@ -818,7 +818,7 @@ if (file_exists($ip2location_conf) && is_readable($ip2location_conf)) {
     $ic = file_get_contents($ip2location_conf);
     if (preg_match('/IP2LOCATION_TOKEN=(.+)$/m', $ic, $m)) $ip2location_token = trim($m[1]);
 }
-$excluded_conf = '/etc/fail2ban/scripts/excluded-domains.conf';
+$excluded_conf = file_exists('/etc/fail2ban/conf.d/whitelist-domains.conf') ? '/etc/fail2ban/conf.d/whitelist-domains.conf' : '/etc/fail2ban/scripts/configurations/excluded-domains.conf';
 $excluded_users = '';
 $excluded_domains = '';
 if (file_exists($excluded_conf) && is_readable($excluded_conf)) {
@@ -835,7 +835,7 @@ if ($csf_conf_ok) {
         $blacklist_countries = trim($m[1]);
     }
 }
-$blocklist_conf = '/etc/fail2ban/scripts/blocklist-organizations.conf';
+$blocklist_conf = file_exists('/etc/fail2ban/conf.d/blocklist-organizations.conf') ? '/etc/fail2ban/conf.d/blocklist-organizations.conf' : '/etc/fail2ban/scripts/configurations/blocklist-organizations.conf';
 $blocked_organizations = '';
 $multi_domain_threshold = 3;
 if (file_exists($blocklist_conf) && is_readable($blocklist_conf)) {
@@ -855,7 +855,7 @@ function is_geoip_ready() {
 $geoip_ready = is_geoip_ready();
 $bans_24h = get_bans_last_24h();
 $current_loglevel = get_current_loglevel();
-$email_conf = '/etc/fail2ban/scripts/email-alerts.conf';
+$email_conf = file_exists('/etc/fail2ban/conf.d/email-alerts.conf') ? '/etc/fail2ban/conf.d/email-alerts.conf' : '/etc/fail2ban/scripts/configurations/email-alerts.conf';
 $email_alerts_enabled = false;
 $email_alerts_to = '';
 $smtp_host = $smtp_port = $smtp_user = $smtp_secure = $email_from = '';

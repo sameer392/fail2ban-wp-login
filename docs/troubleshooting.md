@@ -16,7 +16,7 @@ Use `fail2ban-client` for management. There is no standalone `fail2ban` command.
 
 ## IP not being banned
 
-- **Country whitelist:** Check ignore-countries.conf; IPs from listed countries are skipped
+- **Country whitelist:** Check conf.d/whitelist-countries.conf; IPs from listed countries are skipped
 - **IP whitelist:** Check whitelist-ips.conf and run update-whitelist.sh + update.sh
 - **Time window:** findtime is a sliding window; requests must exceed maxretry within that window
 - **Test filter:** `fail2ban-regex /path/to/log /etc/fail2ban/filter.d/wordpress-wp-login.conf`

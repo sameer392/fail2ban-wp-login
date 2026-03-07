@@ -18,8 +18,8 @@
 | jail.d/*.conf | Jail definitions (backend=polling, logpath, banaction) |
 | action.d/csf-domain.conf | Custom action: actionban → csf-ban.sh, actionunban → csf -dr |
 | scripts/csf-ban.sh | Adds IP to csf.deny; skips whitelisted countries; resolves affected domains |
-| scripts/ignore-countries.conf | `WHITELIST_COUNTRIES=IN,US` (ISO codes) |
-| scripts/excluded-domains.conf | Domains/users excluded from protection (see Whitelists tab) |
+| conf.d/whitelist-countries.conf | `WHITELIST_COUNTRIES=IN,US` (ISO codes) |
+| conf.d/whitelist-domains.conf | Domains/users excluded from protection (see Whitelists tab) |
 | /etc/csf/csf.conf (CC_DENY) | Countries to block at firewall - edited via Blacklist tab |
 | fail2ban.d/loglevel-verbose.conf | Loglevel override (INFO or WARNING) |
 | fail2ban-logrotate | → /etc/logrotate.d/fail2ban |
@@ -32,16 +32,16 @@
 
 IPs/CIDRs in this file are excluded from bans. Supported: single IP, /24, /28, /29, /32.
 
-1. Edit `whitelist-ips.conf` (in `/usr/share/fail2ban/` or package root)
+1. Edit `conf.d/whitelist-ips.conf`
 2. Run `update-whitelist.sh` – regenerates filter ignoreregex
 3. Run `update.sh` – deploy and restart
 
-### Country Whitelist (ignore-countries.conf)
+### Country Whitelist (whitelist-countries.conf)
 
 **Applies only to `apache-high-volume` jail.** IPs from whitelisted countries are not banned by apache-high-volume (high-traffic abuse). **All other jails (wordpress-wp-login, apache-ua-*, etc.) always ban regardless of country**—wp-login brute force and User-Agent abuse are blocked even from whitelisted countries.
 
 ```ini
-# scripts/ignore-countries.conf
+# conf.d/whitelist-countries.conf
 WHITELIST_COUNTRIES=IN,US,GB
 ```
 
@@ -57,7 +57,7 @@ The plugin reads from and writes directly to `/etc/csf/csf.conf`. Edit via WHM �
 
 ---
 
-### Excluded Domains / Users (scripts/excluded-domains.conf)
+### Excluded Domains / Users (conf.d/whitelist-domains.conf)
 
 Domains and cPanel users listed here are **excluded from fail2ban protection**—their logs are not monitored by apache-high-volume or wordpress-wp-login.
 
