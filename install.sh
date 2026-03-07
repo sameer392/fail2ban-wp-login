@@ -99,5 +99,8 @@ if [[ ! -d "$SRC" ]] || [[ ! -f "$SRC/scripts/install.sh" ]]; then
    exit 1
 fi
 
+# GitHub zip archives don't preserve execute bits; fix before running
+chmod +x "$SRC/scripts/"*.sh 2>/dev/null || true
+
 echo
 exec "$SRC/scripts/install.sh"
