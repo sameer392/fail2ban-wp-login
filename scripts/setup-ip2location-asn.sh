@@ -21,7 +21,7 @@ is_valid_zip() {
 }
 
 DOWNLOADED=0
-for FILE_CODE in ASNLITEMMDB ASNLITE.MMDB ASNLITE ASNMMDB DBASNLITE; do
+for FILE_CODE in DBASNLITEMMDB ASNLITEMMDB ASNLITE.MMDB ASNLITE ASNMMDB DBASNLITE; do
     rm -f "$ZIP"
     if curl -sLf -o "$ZIP" "https://www.ip2location.com/download?token=${TOKEN}&file=${FILE_CODE}" 2>/dev/null && is_valid_zip "$ZIP"; then
         DOWNLOADED=1
