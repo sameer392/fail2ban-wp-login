@@ -480,7 +480,7 @@ $action = $_POST['action'] ?? $_GET['action'] ?? '';
 $current_tab = $_GET['tab'] ?? $_POST['tab'] ?? 'dashboard';
 $valid_tabs = ['dashboard' => 'Dashboard', 'banned' => 'Banned IPs', 'whitelists' => 'Whitelists', 'blacklist' => 'Blacklist', 'notifications' => 'Notifications', 'settings' => 'Settings', 'update' => 'Update'];
 if (!isset($valid_tabs[$current_tab])) $current_tab = 'dashboard';
-$tab_from_action = ['save_ignore_countries' => 'whitelists', 'save_whitelist_ips' => 'whitelists', 'save_blocklist_organizations' => 'blacklist', 'save_excluded_domains' => 'whitelists', 'save_email_alerts' => 'notifications', 'save_loglevel' => 'settings', 'deploy' => 'settings', 'force_redeploy' => 'update', 'update_ip2location' => 'settings', 'save_ip2location_token' => 'settings', 'setup_ip2location_asn' => 'settings', 'unban' => 'banned', 'unban_bulk' => 'banned', 'unban_whitelisted' => 'banned', 'save_jail_settings' => 'settings', 'do_update' => 'update'];
+$tab_from_action = ['save_ignore_countries' => 'whitelists', 'save_whitelist_ips' => 'whitelists', 'save_blocklist_organizations' => 'blacklist', 'save_blacklist_countries' => 'blacklist', 'save_excluded_domains' => 'whitelists', 'save_email_alerts' => 'notifications', 'save_loglevel' => 'settings', 'deploy' => 'settings', 'force_redeploy' => 'update', 'update_ip2location' => 'settings', 'save_ip2location_token' => 'settings', 'setup_ip2location_asn' => 'settings', 'unban' => 'banned', 'unban_bulk' => 'banned', 'unban_whitelisted' => 'banned', 'save_jail_settings' => 'settings', 'do_update' => 'update'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
     if ($action === 'save_ignore_countries') {
@@ -524,6 +524,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
                 $msg = 'Blocklist and multi-domain threshold saved.';
             } else {
                 $msg = 'Could not write blocklist-organizations.conf';
+            }
+        } else {
+            $msg = 'Could not write to /etc/fail2ban/scripts/';
+        }
+    } elseif ($action === 'save_blacklist_countries') {
+        $conf = '/etc/fail2ban/scripts/blacklist-countries.conf';
+        $val = trim(preg_replace('/[^A-Za-z,]/', '', $_POST['blacklist_countries'] ?? ''));
+        $content = "# Countries to always block at firewall (CSF CC_DENY)\n# ISO codes, comma-separated. Example: CN,RU,NK\nBLACKLIST_COUNTRIES=$val\n";
+        $dir = dirname($conf);
+        if (!is_dir($dir)) @mkdir($dir, 0755, true);
+        if ((file_exists($conf) && is_writable($conf)) || (!file_exists($conf) && is_dir($dir) && is_writable($dir))) {
+            if (file_put_contents($conf, $content) !== false) {
+                if (is_executable('/etc/fail2ban/scripts/apply-blacklist-countries.sh')) {
+                    exec('/etc/fail2ban/scripts/apply-blacklist-countries.sh 2>&1', $out, $ret);
+                    $msg = $ret === 0 ? 'Blacklist countries saved and CSF updated.' : 'Saved; ' . implode(' ', $out);
+                } else {
+                    $msg = 'Blacklist countries saved. Run apply-blacklist-countries.sh to apply.';
+                }
+            } else {
+                $msg = 'Could not write blacklist-countries.conf';
             }
         } else {
             $msg = 'Could not write to /etc/fail2ban/scripts/';
@@ -797,6 +817,12 @@ if (file_exists($excluded_conf) && is_readable($excluded_conf)) {
     $ec = file_get_contents($excluded_conf);
     if (preg_match('/EXCLUDED_USERS=(.*)$/m', $ec, $m)) $excluded_users = trim($m[1]);
     if (preg_match('/EXCLUDED_DOMAINS=(.*)$/m', $ec, $m)) $excluded_domains = trim($m[1]);
+}
+$blacklist_countries_conf = '/etc/fail2ban/scripts/blacklist-countries.conf';
+$blacklist_countries = '';
+if (file_exists($blacklist_countries_conf) && is_readable($blacklist_countries_conf)) {
+    $bc2 = file_get_contents($blacklist_countries_conf);
+    if (preg_match('/BLACKLIST_COUNTRIES=(.*)$/m', $bc2, $m)) $blacklist_countries = trim($m[1]);
 }
 $blocklist_conf = '/etc/fail2ban/scripts/blocklist-organizations.conf';
 $blocked_organizations = '';
@@ -1223,6 +1249,21 @@ if ($home_url === '//' || $home_url === './') $home_url = '../../';
 
 <!-- Tab: Blacklist -->
 <div role="tabpanel" class="tab-pane <?php echo $current_tab === 'blacklist' ? 'active' : ''; ?>" id="tab-blacklist">
+<div class="panel panel-default" style="max-width:600px;margin-bottom:20px;">
+  <div class="panel-heading">Blacklist Countries</div>
+  <div class="panel-body">
+    <p class="text-muted">IPs from these countries are blocked at the firewall (CSF CC_DENY). All traffic from these countries is denied before reaching the server.</p>
+    <form method="post">
+      <input type="hidden" name="action" value="save_blacklist_countries">
+      <input type="hidden" name="tab" value="blacklist">
+      <div class="form-group">
+        <label>Blacklist countries (comma-separated ISO codes)</label>
+        <input type="text" name="blacklist_countries" value="<?php echo htmlspecialchars($blacklist_countries); ?>" class="form-control" placeholder="CN,RU,NK" style="max-width:400px;">
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm">Save &amp; Apply</button>
+    </form>
+  </div>
+</div>
 <div class="panel panel-default" style="max-width:600px;">
   <div class="panel-heading">Blocked Organizations &amp; Multi-Domain Abuse</div>
   <div class="panel-body">

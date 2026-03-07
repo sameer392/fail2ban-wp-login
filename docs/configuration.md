@@ -20,6 +20,7 @@
 | scripts/csf-ban.sh | Adds IP to csf.deny; skips whitelisted countries; resolves affected domains |
 | scripts/ignore-countries.conf | `WHITELIST_COUNTRIES=IN,US` (ISO codes) |
 | scripts/excluded-domains.conf | Domains/users excluded from protection (see Whitelists tab) |
+| scripts/blacklist-countries.conf | Countries to block at firewall (CSF CC_DENY) - see Blacklist tab |
 | fail2ban.d/loglevel-verbose.conf | Loglevel override (INFO or WARNING) |
 | fail2ban-logrotate | → /etc/logrotate.d/fail2ban |
 
@@ -47,6 +48,18 @@ WHITELIST_COUNTRIES=IN,US,GB
 - **IN** = India, **US** = United States, **GB** = United Kingdom
 - Country lookup: IP2Location LITE DB1 → ip-api.com fallback
 - Setup: Run `scripts/setup-ip2location.sh` during install or manually
+
+### Blacklist Countries (scripts/blacklist-countries.conf)
+
+IPs from blacklisted countries are **blocked at the firewall** (CSF CC_DENY). All traffic from these countries is denied before reaching the server. Requires CSF.
+
+```ini
+BLACKLIST_COUNTRIES=CN,RU,NK
+```
+
+Edit via WHM → Blacklist → Blacklist Countries. Run `apply-blacklist-countries.sh` or use "Save & Apply" in the UI. CSF restart (`csf -r`) is run automatically.
+
+---
 
 ### Excluded Domains / Users (scripts/excluded-domains.conf)
 

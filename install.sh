@@ -85,6 +85,8 @@ mkdir -p /etc/fail2ban/scripts
 [ -f "$CONFIG_DIR/scripts/csf-ban.sh" ] && cp -f "$CONFIG_DIR/scripts/csf-ban.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/csf-ban.sh
 [ -f "$CONFIG_DIR/scripts/ignore-countries.conf" ] && cp -f "$CONFIG_DIR/scripts/ignore-countries.conf" /etc/fail2ban/scripts/
 [ -f "$CONFIG_DIR/scripts/blocklist-organizations.conf" ] && cp -f "$CONFIG_DIR/scripts/blocklist-organizations.conf" /etc/fail2ban/scripts/
+[ -f "$CONFIG_DIR/scripts/blacklist-countries.conf" ] && cp -f "$CONFIG_DIR/scripts/blacklist-countries.conf" /etc/fail2ban/scripts/
+[ -f "$CONFIG_DIR/scripts/apply-blacklist-countries.sh" ] && cp -f "$CONFIG_DIR/scripts/apply-blacklist-countries.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/apply-blacklist-countries.sh
 [ -f "$CONFIG_DIR/scripts/setup-ip2location.sh" ] && cp -f "$CONFIG_DIR/scripts/setup-ip2location.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/setup-ip2location.sh
 [ -f "$CONFIG_DIR/scripts/update-ip2location.sh" ] && cp -f "$CONFIG_DIR/scripts/update-ip2location.sh" /etc/fail2ban/scripts/
 [ -f "$CONFIG_DIR/scripts/setup-ip2location-asn.sh" ] && cp -f "$CONFIG_DIR/scripts/setup-ip2location-asn.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/setup-ip2location-asn.sh && chmod +x /etc/fail2ban/scripts/update-ip2location.sh
@@ -94,6 +96,7 @@ mkdir -p /etc/fail2ban/scripts
 [ -f "$CONFIG_DIR/scripts/generate-logpath.sh" ] && cp -f "$CONFIG_DIR/scripts/generate-logpath.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/generate-logpath.sh
 [ -f "$CONFIG_DIR/fail2ban-logrotate" ] && cp -f "$CONFIG_DIR/fail2ban-logrotate" /etc/logrotate.d/fail2ban && echo "      Logrotate config installed."
 [ -x /etc/fail2ban/scripts/generate-logpath.sh ] && /etc/fail2ban/scripts/generate-logpath.sh || true
+[ -x /etc/fail2ban/scripts/apply-blacklist-countries.sh ] && /etc/fail2ban/scripts/apply-blacklist-countries.sh || true
 echo "      Config deployed."
 
 # 3. Install libmaxminddb (for IP2Location country lookup via mmdblookup)

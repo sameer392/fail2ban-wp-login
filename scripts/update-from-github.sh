@@ -40,6 +40,7 @@ mkdir -p "$BACKUP"
 [ -f /etc/fail2ban/scripts/ignore-countries.conf ] && cp -a /etc/fail2ban/scripts/ignore-countries.conf "$BACKUP/"
 [ -f /etc/fail2ban/scripts/blocklist-organizations.conf ] && cp -a /etc/fail2ban/scripts/blocklist-organizations.conf "$BACKUP/" 2>/dev/null || true
 [ -f /etc/fail2ban/scripts/excluded-domains.conf ] && cp -a /etc/fail2ban/scripts/excluded-domains.conf "$BACKUP/" 2>/dev/null || true
+[ -f /etc/fail2ban/scripts/blacklist-countries.conf ] && cp -a /etc/fail2ban/scripts/blacklist-countries.conf "$BACKUP/" 2>/dev/null || true
 [ -f /etc/fail2ban/scripts/email-alerts.conf ] && cp -a /etc/fail2ban/scripts/email-alerts.conf "$BACKUP/" 2>/dev/null || true
 
 echo "Installing files..."
@@ -55,7 +56,9 @@ echo "Restoring user configs..."
 [ -f "$BACKUP/ignore-countries.conf" ] && cp -a "$BACKUP/ignore-countries.conf" /etc/fail2ban/scripts/
 [ -f "$BACKUP/blocklist-organizations.conf" ] && cp -a "$BACKUP/blocklist-organizations.conf" /etc/fail2ban/scripts/ 2>/dev/null || true
 [ -f "$BACKUP/excluded-domains.conf" ] && cp -a "$BACKUP/excluded-domains.conf" /etc/fail2ban/scripts/ 2>/dev/null || true
+[ -f "$BACKUP/blacklist-countries.conf" ] && cp -a "$BACKUP/blacklist-countries.conf" /etc/fail2ban/scripts/ 2>/dev/null || true
 [ -f "$BACKUP/email-alerts.conf" ] && cp -a "$BACKUP/email-alerts.conf" /etc/fail2ban/scripts/ 2>/dev/null || true
+[ -x /etc/fail2ban/scripts/apply-blacklist-countries.sh ] && /etc/fail2ban/scripts/apply-blacklist-countries.sh 2>/dev/null || true
 
 echo "Installing WHM plugin..."
 [ -x "$INSTALL_DIR/whm-plugin/install-whm-plugin.sh" ] && (cd "$INSTALL_DIR/whm-plugin" && ./install-whm-plugin.sh) || true
