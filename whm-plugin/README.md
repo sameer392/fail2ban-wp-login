@@ -35,10 +35,11 @@ cd /root/fail2ban/whm-plugin
 |---------|-------------|
 | **Status** | View fail2ban service and per-jail stats |
 | **Jail settings** | Edit maxretry, findtime, bantime; Save & Deploy |
-| **Banned IPs** | Table with IP, country, banned time; per-IP Unban; AJAX refresh icon |
+| **Banned IPs** | Table with IP, country, banned time; CSF button; click IP for log entries; per-IP Unban; AJAX refresh; auto-refresh every 60s |
 | **Unban all whitelisted** | Bulk unban IPs from whitelisted countries |
 | **Ignore Countries** | Edit whitelisted country codes (e.g. IN, US) |
 | **Whitelist IPs** | Edit IP/CIDR whitelist, save and deploy |
+| **Update** | Check for updates from GitHub; install by tag; Force re-deploy |
 | **Deploy** | Deploy config and restart fail2ban |
 | **Update IP2Location** | Refresh GeoIP database |
 

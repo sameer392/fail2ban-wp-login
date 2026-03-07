@@ -30,6 +30,9 @@ cd /root/fail2ban
 
 # Config deploy only (fail2ban already installed)
 /usr/share/fail2ban/update.sh
+
+# Update from GitHub (e.g. after pushing a new tag)
+/usr/share/fail2ban/scripts/update-from-github.sh v1.0.1
 ```
 
 ## Documentation

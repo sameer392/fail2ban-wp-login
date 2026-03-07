@@ -57,8 +57,8 @@ To-do items for enhancing usability, reliability, and functionality.
 **Improvement:** Add `healthcheck.sh` that verifies: fail2ban running, jails enabled, log path exists, GeoIP present (if configured), and returns appropriate exit codes (0=ok, 1=fail) for monitoring systems (Nagios, Uptime Kuma, etc.).
 
 ### 3.3 Upgrade path documentation
-**Current:** Updates are done by re-running update or reinstalling; no formal upgrade doc.  
-**Improvement:** Document upgrade steps (e.g. backup → pull/copy new files → update.sh) and any config migrations in README or UPGRADE.md.
+**Current:** Update-from-github.sh and WHM Update tab documented in installation.md and operations.md.  
+**Improvement:** Add UPGRADE.md with migration notes if config schema changes between versions.
 
 ### 3.4 Expand status.sh to include dynamic jails
 **Current:** `status.sh` only lists `wordpress-wp-login` and `apache-high-volume`.  
@@ -84,9 +84,9 @@ To-do items for enhancing usability, reliability, and functionality.
 
 ## 5. WHM Plugin UX
 
-### 5.1 Log details fallback when bips.data is empty
-**Current:** Click-to-view log details for banned IPs uses `bips.data` from fail2ban SQLite; often empty if fail2ban does not populate it.  
-**Improvement:** Fallback to grepping domlogs for the IP when bips.data is empty (with reasonable limits).
+### 5.1 Log details fallback when bips.data is empty ✓ Done
+**Current:** Click-to-view log details for banned IPs uses `bips.data` from fail2ban SQLite; fail2ban stores only dbmaxmatches (default 5) per ban.  
+**Implemented:** Fallback to grepping domlogs for the IP when matches < failures; shows up to 100 log entries.
 
 ### 5.2 Reduce fail2ban log noise
 **Current:** "Ignoring entries older than Xs" and "timing issue" warnings appear after restart or with log latency.  

@@ -33,7 +33,8 @@ ls /usr/local/apache/domlogs/*/* | head -5
 | Script | Purpose |
 |--------|---------|
 | install.sh | Full install: copy to /usr/share/fail2ban, deploy, IP2Location, logrotate, enable, WHM plugin |
-| update.sh | Deploy config to /etc/fail2ban (backs up first), restart fail2ban |
+| update.sh | Deploy config to /etc/fail2ban (backs up first), restart fail2ban; updates WHM plugin (no cPanel restart) |
+| update-from-github.sh | Update from GitHub release. Usage: `update-from-github.sh <tag>` (e.g. `v1.0.1`). Uses auto-generated source archive. |
 | restore-backup.sh | Restore from backup (default: latest). Usage: `restore-backup.sh [BACKUP_DIR]` |
 | uninstall.sh | Remove config; --purge = also packages, WHM plugin, /etc and /usr/share |
 | status.sh | Show fail2ban service and jail status |
@@ -56,6 +57,16 @@ All scripts must be run as root.
 ### Backup & Restore
 
 `update.sh` creates a timestamped backup in `/etc/fail2ban/backups/YYYYMMDD-HHMMSS/` before each deploy (keeps last 10). To restore: `restore-backup.sh` (latest) or `restore-backup.sh /etc/fail2ban/backups/YYYYMMDD-HHMMSS`.
+
+---
+
+## Creating a Release (maintainers)
+
+1. Tag and push: `git tag v1.0.2 && git push origin v1.0.2`
+2. GitHub auto-generates the source archive at `https://github.com/sameer392/fail2ban-whm/archive/refs/tags/v1.0.2.zip`
+3. Users can update via WHM (Update tab) or `update-from-github.sh v1.0.2`
+
+No manual zip creation or upload needed. Optionally create a GitHub Release for the tag to add release notes.
 
 ---
 

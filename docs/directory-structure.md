@@ -29,7 +29,8 @@
 │   ├── csf-ban.sh          # CSF ban helper (country-aware)
 │   ├── ignore-countries.conf     # Countries to never ban (e.g. IN)
 │   ├── setup-ip2location.sh      # One-time IP2Location setup
-│   └── update-ip2location.sh     # Cron: weekly DB update
+│   ├── update-ip2location.sh     # Cron: weekly DB update
+│   └── update-from-github.sh     # Update from GitHub by tag (e.g. v1.0.1)
 │
 └── whm-plugin/
     ├── install-whm-plugin.sh
