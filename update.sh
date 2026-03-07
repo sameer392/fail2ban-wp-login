@@ -96,10 +96,10 @@ echo "      Config deployed."
 echo "[3/6] Generating logpath (excluded domains)..."
 [ -x /etc/fail2ban/scripts/generate-logpath.sh ] && /etc/fail2ban/scripts/generate-logpath.sh || true
 
-echo "[3b/5] Applying blacklist countries (CSF CC_DENY)..."
+echo "[4/6] Applying blacklist countries (CSF CC_DENY)..."
 [ -x /etc/fail2ban/scripts/apply-blacklist-countries.sh ] && /etc/fail2ban/scripts/apply-blacklist-countries.sh || true
 
-echo "[4/5] Updating WHM plugin..."
+echo "[5/6] Updating WHM plugin..."
 # Use SCRIPT_DIR so running ./update.sh from source (e.g. /root/fail2ban) deploys latest plugin files
 WHM_PLUGIN_DIR="$SCRIPT_DIR/whm-plugin"
 if [ -x "$WHM_PLUGIN_DIR/install-whm-plugin.sh" ] && [ -f "$WHM_PLUGIN_DIR/plugin/index.php" ]; then
