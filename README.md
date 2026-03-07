@@ -23,24 +23,42 @@ A complete fail2ban configuration for cPanel/WHM servers that blocks WordPress b
 
 ## Quick Start
 
+### One-liner install (latest release)
+
 ```bash
-# One-liner install (downloads latest release and runs installer)
 curl -sSL https://github.com/sameer392/fail2ban-whm/releases/latest/download/install.sh | bash
+```
 
-# Or from main branch (works without creating a release)
+### One-liner install (main branch)
+
+Works without creating a release.
+
+```bash
 curl -sSL https://raw.githubusercontent.com/sameer392/fail2ban-whm/main/install.sh | bash
+```
 
-# Install a specific version (when using releases URL)
+### Install a specific version
+
+```bash
 curl -sSL https://github.com/sameer392/fail2ban-whm/releases/latest/download/install.sh | bash -s v1.0.0
+```
 
-# From local clone
+### From local clone
+
+```bash
 cd /root/fail2ban
 ./scripts/install.sh
+```
 
-# Config deploy only (fail2ban already installed)
+### Config deploy only (fail2ban already installed)
+
+```bash
 /usr/share/fail2ban/scripts/update.sh
+```
 
-# Update from GitHub (e.g. after pushing a new tag)
+### Update from GitHub
+
+```bash
 /usr/share/fail2ban/scripts/update-from-github.sh v1.0.1
 ```
 
