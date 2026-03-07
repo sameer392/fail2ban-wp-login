@@ -2,7 +2,8 @@
 
 ```
 /root/fail2ban/
-├── fail2ban-logrotate      # Logrotate config → /etc/logrotate.d/fail2ban
+├── logrotate.d/            # Logrotate configs
+│   └── fail2ban            # → /etc/logrotate.d/fail2ban
 ├── README.md
 │
 ├── filter.d/               # Fail2ban filters

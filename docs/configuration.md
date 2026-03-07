@@ -22,7 +22,7 @@
 | conf.d/whitelist-domains.conf | Domains/users excluded from protection (see Whitelists tab) |
 | /etc/csf/csf.conf (CC_DENY) | Countries to block at firewall - edited via Blacklist tab |
 | fail2ban.d/loglevel-verbose.conf | Loglevel override (INFO or WARNING) |
-| fail2ban-logrotate | → /etc/logrotate.d/fail2ban |
+| logrotate.d/fail2ban | → /etc/logrotate.d/fail2ban |
 
 ---
 

@@ -50,7 +50,7 @@ for f in csf-ban.sh setup-ip2location.sh setup-ip2location-asn.sh update-ip2loca
 done
 [ -d /etc/fail2ban/conf.d ] && for f in /etc/fail2ban/conf.d/*.conf; do [ -f "$f" ] && cp -a "$f" "$BKP/conf.d/" 2>/dev/null || true; done
 [ -f /etc/fail2ban/jail.d/99-domlog-logpath.conf ] && cp -a /etc/fail2ban/jail.d/99-domlog-logpath.conf "$BKP/jail.d/" 2>/dev/null || true
-[ -f /etc/logrotate.d/fail2ban ] && cp -a /etc/logrotate.d/fail2ban "$BKP/" 2>/dev/null || true
+[ -f /etc/logrotate.d/fail2ban ] && cp -a /etc/logrotate.d/fail2ban "$BKP/logrotate.d/" 2>/dev/null || true
 echo "      Backup: $BKP"
 # Keep last 10 backups
 ls -dt "$BACKUP_DIR"/[0-9]*-[0-9]* 2>/dev/null | tail -n +11 | xargs -r rm -rf
@@ -58,15 +58,13 @@ ls -dt "$BACKUP_DIR"/[0-9]*-[0-9]* 2>/dev/null | tail -n +11 | xargs -r rm -rf
 # When running from repo, sync source to /usr/share/fail2ban/ so update-from-github.sh is available
 if [ "$CONFIG_DIR" != "$INSTALL_DIR" ] && [ -d "$CONFIG_DIR" ]; then
    mkdir -p "$INSTALL_DIR"
-   for d in filter.d jail.d action.d fail2ban.d conf.d scripts whm-plugin; do
+   for d in filter.d jail.d action.d fail2ban.d conf.d logrotate.d scripts whm-plugin; do
       [ -d "$CONFIG_DIR/$d" ] || continue
       mkdir -p "$INSTALL_DIR/$d"
       for f in "$CONFIG_DIR/$d"/*; do [ -f "$f" ] && cp -f "$f" "$INSTALL_DIR/$d/"; done
       [ "$d" = "whm-plugin" ] && [ -d "$CONFIG_DIR/whm-plugin/plugin" ] && mkdir -p "$INSTALL_DIR/whm-plugin/plugin" && for f in "$CONFIG_DIR/whm-plugin/plugin"/*; do [ -f "$f" ] && cp -f "$f" "$INSTALL_DIR/whm-plugin/plugin/"; done
    done
-   for f in fail2ban-logrotate; do
-      [ -f "$CONFIG_DIR/$f" ] && cp -f "$CONFIG_DIR/$f" "$INSTALL_DIR/"
-   done
+   [ -d "$CONFIG_DIR/logrotate.d" ] && mkdir -p "$INSTALL_DIR/logrotate.d" && for f in "$CONFIG_DIR/logrotate.d"/*; do [ -f "$f" ] && cp -f "$f" "$INSTALL_DIR/logrotate.d/"; done
    chmod +x "$INSTALL_DIR/scripts"/*.sh 2>/dev/null || true
 fi
 
@@ -99,7 +97,7 @@ mkdir -p /etc/fail2ban/conf.d
 [ -f "$CONFIG_DIR/conf.d/whitelist-domains.conf" ] && cp -f "$CONFIG_DIR/conf.d/whitelist-domains.conf" /etc/fail2ban/conf.d/
 [ -f "$CONFIG_DIR/conf.d/whitelist-ips.conf" ] && cp -f "$CONFIG_DIR/conf.d/whitelist-ips.conf" /etc/fail2ban/conf.d/
 [ -f "$CONFIG_DIR/scripts/generate-logpath.sh" ] && cp -f "$CONFIG_DIR/scripts/generate-logpath.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/generate-logpath.sh
-[ -f "$CONFIG_DIR/fail2ban-logrotate" ] && cp -f "$CONFIG_DIR/fail2ban-logrotate" /etc/logrotate.d/fail2ban
+[ -f "$CONFIG_DIR/logrotate.d/fail2ban" ] && cp -f "$CONFIG_DIR/logrotate.d/fail2ban" /etc/logrotate.d/fail2ban
 echo "      Config deployed."
 
 echo "[3/5] Generating logpath (excluded domains)..."

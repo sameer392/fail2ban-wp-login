@@ -35,7 +35,7 @@ if [ "$SCRIPT_SRC" != "$INSTALL_DIR" ]; then
    echo "[0/7] Installing to $INSTALL_DIR..."
    mkdir -p "$INSTALL_DIR"
    updated=0
-   for d in filter.d jail.d action.d fail2ban.d conf.d scripts whm-plugin; do
+   for d in filter.d jail.d action.d fail2ban.d conf.d logrotate.d scripts whm-plugin; do
       if [ -d "$SCRIPT_SRC/$d" ]; then
          for f in "$SCRIPT_SRC/$d"/*; do
             [ -f "$f" ] || continue
@@ -55,9 +55,6 @@ if [ "$SCRIPT_SRC" != "$INSTALL_DIR" ]; then
    done
    for f in install.sh update.sh uninstall.sh restore-backup.sh update-whitelist.sh status.sh; do
       [ -f "$SCRIPT_SRC/scripts/$f" ] && copy_if_changed "$SCRIPT_SRC/scripts/$f" "$INSTALL_DIR/scripts/$f" && updated=1
-   done
-   for f in fail2ban-logrotate; do
-      [ -f "$SCRIPT_SRC/$f" ] && copy_if_changed "$SCRIPT_SRC/$f" "$INSTALL_DIR/$f" && updated=1
    done
    [ "$updated" -eq 1 ] && echo "      Source installed/updated." || echo "      Source unchanged (already up to date)."
    echo "      You may remove $SCRIPT_SRC after this."
@@ -99,7 +96,7 @@ mkdir -p /etc/fail2ban/conf.d
 [ -f "$CONFIG_DIR/conf.d/whitelist-domains.conf" ] && cp -f "$CONFIG_DIR/conf.d/whitelist-domains.conf" /etc/fail2ban/conf.d/
 [ -f "$CONFIG_DIR/conf.d/whitelist-ips.conf" ] && cp -f "$CONFIG_DIR/conf.d/whitelist-ips.conf" /etc/fail2ban/conf.d/
 [ -f "$CONFIG_DIR/scripts/generate-logpath.sh" ] && cp -f "$CONFIG_DIR/scripts/generate-logpath.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/generate-logpath.sh
-[ -f "$CONFIG_DIR/fail2ban-logrotate" ] && cp -f "$CONFIG_DIR/fail2ban-logrotate" /etc/logrotate.d/fail2ban && echo "      Logrotate config installed."
+[ -f "$CONFIG_DIR/logrotate.d/fail2ban" ] && cp -f "$CONFIG_DIR/logrotate.d/fail2ban" /etc/logrotate.d/fail2ban && echo "      Logrotate config installed."
 [ -x /etc/fail2ban/scripts/generate-logpath.sh ] && /etc/fail2ban/scripts/generate-logpath.sh || true
 echo "      Config deployed."
 

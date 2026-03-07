@@ -1,5 +1,5 @@
 # Fail2ban log rotation - prevents unbounded growth (e.g. 200MB+)
-# Installed by install.sh / update.sh to /etc/logrotate.d/fail2ban
+# Installed by install.sh / update.sh from logrotate.d/ to /etc/logrotate.d/fail2ban
 # Rotate when log reaches 50MB or weekly; keep 4 archives compressed
 /var/log/fail2ban.log {
     missingok

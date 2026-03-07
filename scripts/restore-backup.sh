@@ -36,6 +36,8 @@ elif [ -d "$BKP/scripts/configurations" ]; then
       cp -f "$f" "/etc/fail2ban/conf.d/$bn" 2>/dev/null || true
    done
 fi
+# Restore logrotate (backup may have fail2ban at root or in logrotate.d/)
+[ -f "$BKP/logrotate.d/fail2ban" ] && cp -f "$BKP/logrotate.d/fail2ban" /etc/logrotate.d/fail2ban 2>/dev/null || true
 [ -f "$BKP/fail2ban" ] && cp -f "$BKP/fail2ban" /etc/logrotate.d/fail2ban 2>/dev/null || true
 echo "Config restored. Restarting fail2ban..."
 systemctl restart fail2ban
