@@ -68,8 +68,12 @@ if [ "$CONFIG_DIR" != "$INSTALL_DIR" ] && [ -d "$CONFIG_DIR" ]; then
    chmod +x "$INSTALL_DIR/scripts"/*.sh 2>/dev/null || true
 fi
 
+# Sync whitelist-ips.conf to /usr/share/fail2ban/conf.d/ if it exists in /etc but not in source
+# (e.g. from old install or manual edit) so WHM plugin and future deploys have it
+mkdir -p "$INSTALL_DIR/conf.d" /etc/fail2ban/conf.d
+[ -f /etc/fail2ban/conf.d/whitelist-ips.conf ] && [ ! -f "$INSTALL_DIR/conf.d/whitelist-ips.conf" ] && cp -a /etc/fail2ban/conf.d/whitelist-ips.conf "$INSTALL_DIR/conf.d/" 2>/dev/null || true
+
 # Migrate old conf files to conf.d/ if present
-mkdir -p /etc/fail2ban/conf.d
 for oldconf in ignore-countries.conf blocklist-organizations.conf excluded-domains.conf; do
    newconf="$oldconf"
    [ "$oldconf" = "ignore-countries.conf" ] && newconf="whitelist-countries.conf"
