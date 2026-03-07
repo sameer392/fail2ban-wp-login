@@ -36,7 +36,7 @@ IPs/CIDRs in this file are excluded from bans. Supported: single IP, /24, /28, /
 
 ### Country Whitelist (ignore-countries.conf)
 
-IPs from specified countries are not banned (checked in csf-ban.sh via GeoIP).
+**Applies only to `apache-high-volume` jail.** IPs from whitelisted countries are not banned by apache-high-volume (high-traffic abuse). **All other jails (wordpress-wp-login, apache-ua-*, etc.) always ban regardless of country**—wp-login brute force and User-Agent abuse are blocked even from whitelisted countries.
 
 ```ini
 # scripts/ignore-countries.conf
