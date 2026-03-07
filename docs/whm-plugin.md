@@ -19,7 +19,7 @@ systemctl restart cpanel
 |---------|-------------|
 | **Status** | fail2ban service and per-jail stats |
 | **Jail settings** | Edit maxretry, findtime, bantime per jail; Save & Deploy |
-| **Banned IPs** | Table with IP, country (GeoIP), banned time, Unban button; reload icon for AJAX refresh |
+| **Banned IPs** | Table with IP, country (GeoIP), banned time, **CSF** button (runs `csf -g` in modal), Unban button; reload icon for AJAX refresh |
 | **Unban** | Per-IP or "Unban all from whitelisted countries" |
 | **Ignore Countries** | Edit ISO codes; saves to ignore-countries.conf |
 | **Whitelist IPs** | Edit whitelist-ips.conf; Save & Deploy runs update-whitelist + update |

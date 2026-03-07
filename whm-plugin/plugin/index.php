@@ -867,6 +867,24 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'jail_summary') {
     exit;
 }
 
+// AJAX: csf -g IP (CSF status for an IP)
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'csf_grep' && isset($_GET['ip'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    $ip = preg_replace('/[^0-9a-fA-F.:]/', '', $_GET['ip']);
+    $output = '';
+    $ok = false;
+    if ($ip && file_exists('/usr/sbin/csf')) {
+        $out = [];
+        exec('/usr/sbin/csf -g ' . escapeshellarg($ip) . ' 2>&1', $out, $ret);
+        $output = implode("\n", $out);
+        $ok = true;
+    } else {
+        $output = $ip ? 'CSF not found.' : 'Invalid IP.';
+    }
+    echo json_encode(['ok' => $ok, 'ip' => $ip, 'output' => $output]);
+    exit;
+}
+
 // AJAX: check GitHub for latest release
 if (isset($_GET['ajax']) && $_GET['ajax'] === 'check_update') {
     header('Content-Type: application/json; charset=utf-8');
@@ -939,7 +957,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'banned_ips') {
             $rowNum = ($page - 1) * $per_page + $i + 1;
             $timeLeftAttr = $expiry > 0 ? ' data-expiry="' . $expiry . '" data-remaining="' . (int)($row['remaining'] ?? 0) . '"' : '';
             $unban_entry = htmlspecialchars($ip . '|' . $row_jail);
-            echo '<tr' . $rowClass . '><td><input type="checkbox" class="banned-ip-cb" name="unban_entries[]" value="' . $unban_entry . '" form="' . htmlspecialchars($form_id) . '"></td><td>' . $rowNum . '</td><td><a href="#" class="ip-log-detail" data-ip="' . htmlspecialchars($ip) . '" data-jail="' . htmlspecialchars($row_jail) . '" title="Click to view log details">' . htmlspecialchars($ip) . '</a></td><td><code style="font-size:11px;">' . htmlspecialchars($row_jail) . '</code></td><td>' . htmlspecialchars($country) . $wlLabel . '</td><td style="max-width:150px;font-size:11px;" title="' . htmlspecialchars($org) . '">' . htmlspecialchars($org) . '</td><td style="max-width:200px;font-size:11px;" title="' . htmlspecialchars($affected) . '">' . htmlspecialchars($affected) . '</td><td>' . htmlspecialchars($banned_at) . '</td><td class="ban-time-left"' . $timeLeftAttr . '>' . htmlspecialchars($remaining) . '</td><td><form method="post" style="display:inline;margin:0;"><input type="hidden" name="action" value="unban"><input type="hidden" name="tab" value="' . htmlspecialchars($retab) . '"><input type="hidden" name="jail" value="' . htmlspecialchars($row_jail) . '"><input type="hidden" name="ip" value="' . htmlspecialchars($ip) . '"><button type="submit" class="btn btn-default btn-xs">Unban</button></form></td></tr>';
+            echo '<tr' . $rowClass . '><td><input type="checkbox" class="banned-ip-cb" name="unban_entries[]" value="' . $unban_entry . '" form="' . htmlspecialchars($form_id) . '"></td><td>' . $rowNum . '</td><td><a href="#" class="ip-log-detail" data-ip="' . htmlspecialchars($ip) . '" data-jail="' . htmlspecialchars($row_jail) . '" title="Click to view log details">' . htmlspecialchars($ip) . '</a></td><td><code style="font-size:11px;">' . htmlspecialchars($row_jail) . '</code></td><td>' . htmlspecialchars($country) . $wlLabel . '</td><td style="max-width:150px;font-size:11px;" title="' . htmlspecialchars($org) . '">' . htmlspecialchars($org) . '</td><td style="max-width:200px;font-size:11px;" title="' . htmlspecialchars($affected) . '">' . htmlspecialchars($affected) . '</td><td>' . htmlspecialchars($banned_at) . '</td><td class="ban-time-left"' . $timeLeftAttr . '>' . htmlspecialchars($remaining) . '</td><td><button type="button" class="btn btn-default btn-xs csf-status-btn" data-ip="' . htmlspecialchars($ip) . '" title="Check CSF status (csf -g)">CSF</button> <form method="post" style="display:inline;margin:0;"><input type="hidden" name="action" value="unban"><input type="hidden" name="tab" value="' . htmlspecialchars($retab) . '"><input type="hidden" name="jail" value="' . htmlspecialchars($row_jail) . '"><input type="hidden" name="ip" value="' . htmlspecialchars($ip) . '"><button type="submit" class="btn btn-default btn-xs">Unban</button></form></td></tr>';
         }
         echo '</tbody></table><form id="' . htmlspecialchars($form_id) . '" method="post" style="margin-top:6px;"><input type="hidden" name="action" value="unban_bulk"><input type="hidden" name="tab" value="' . htmlspecialchars($retab) . '"><button type="submit" class="btn btn-warning btn-sm bulk-unban-btn" disabled>Unban selected</button></form>';
         if ($total_pages > 1) {
@@ -982,7 +1000,9 @@ if ($home_url === '//' || $home_url === './') $home_url = '../../';
 <div id="fail2ban-msg" class="alert alert-info" style="display:<?php echo $msg ? 'block' : 'none'; ?>;"><?php echo $msg ? htmlspecialchars($msg) : ''; ?></div>
 <div id="fail2ban-loading" class="fail2ban-loading-overlay" style="display:none;"><span class="fail2ban-spinner"></span><span>Processing...</span></div>
 <div id="ip-log-modal-backdrop" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:2147483646;"></div>
-<div id="ip-log-modal" tabindex="-1" role="dialog" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:90%;max-width:900px;max-height:80vh;background:#fff;border-radius:4px;box-shadow:0 4px 20px rgba(0,0,0,0.5);z-index:2147483647;overflow:hidden;border:1px solid #ccc;"><div style="padding:15px;border-bottom:1px solid #ddd;display:flex;justify-content:space-between;align-items:center;"><h4 style="margin:0;">Log entries for <code id="ip-log-modal-ip"></code> (<span id="ip-log-modal-jail"></span>)</h4><button type="button" class="btn btn-default btn-sm ip-log-modal-close">&times;</button></div><div style="padding:15px;overflow:auto;max-height:400px;"><p class="text-muted" id="ip-log-modal-loading">Loading...</p><pre id="ip-log-modal-body" style="display:none;font-size:11px;white-space:pre-wrap;word-break:break-all;"></pre><p class="text-muted" id="ip-log-modal-empty" style="display:none;">No log entries in database for this IP.</p></div><div style="padding:15px;border-top:1px solid #ddd;"><button type="button" class="btn btn-default btn-sm ip-log-modal-close">Close</button></div></div>
+<div id="ip-log-modal" tabindex="-1" role="dialog" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:90%;max-width:900px;max-height:80vh;background:#fff;border-radius:4px;box-shadow:0 4px 20px rgba(0,0,0,0.5);z-index:2147483647;overflow:hidden;border:1px solid #ccc;"><div style="padding:15px;border-bottom:1px solid #ddd;display:flex;justify-content:space-between;align-items:center;"><h4 style="margin:0;">Log entries for <code id="ip-log-modal-ip"></code> (<span id="ip-log-modal-jail"></span>)</h4><div><button type="button" class="btn btn-default btn-sm ip-log-modal-copy" title="Copy to clipboard" style="margin-right:6px;"><span class="glyphicon glyphicon-copy" aria-hidden="true"></span></button><button type="button" class="btn btn-default btn-sm ip-log-modal-close">&times;</button></div></div><div style="padding:15px;overflow:auto;max-height:400px;"><p class="text-muted" id="ip-log-modal-loading">Loading...</p><pre id="ip-log-modal-body" style="display:none;font-size:11px;white-space:pre-wrap;word-break:break-all;"></pre><p class="text-muted" id="ip-log-modal-empty" style="display:none;">No log entries in database for this IP.</p></div><div style="padding:15px;border-top:1px solid #ddd;"><button type="button" class="btn btn-default btn-sm ip-log-modal-close">Close</button></div></div>
+<div id="csf-modal-backdrop" class="csf-modal-backdrop" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:2147483646;"></div>
+<div id="csf-modal" class="csf-modal" tabindex="-1" role="dialog" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:90%;max-width:700px;max-height:80vh;background:#fff;border-radius:4px;box-shadow:0 4px 20px rgba(0,0,0,0.5);z-index:2147483647;overflow:hidden;border:1px solid #ccc;"><div style="padding:15px;border-bottom:1px solid #ddd;display:flex;justify-content:space-between;align-items:center;"><h4 style="margin:0;">CSF status: <code id="csf-modal-ip"></code> <small class="text-muted">(csf -g)</small></h4><div><button type="button" class="btn btn-default btn-sm csf-modal-copy" title="Copy to clipboard" style="margin-right:6px;"><span class="glyphicon glyphicon-copy" aria-hidden="true"></span></button><button type="button" class="btn btn-default btn-sm csf-modal-close">&times;</button></div></div><div style="padding:15px;overflow:auto;max-height:450px;"><p class="text-muted" id="csf-modal-loading">Loading...</p><pre id="csf-modal-body" style="display:none;font-size:12px;white-space:pre-wrap;word-break:break-all;margin:0;"></pre></div><div style="padding:15px;border-top:1px solid #ddd;"><button type="button" class="btn btn-default btn-sm csf-modal-close">Close</button></div></div>
 <?php if (!$geoip_ready): ?>
 <p class="alert alert-warning">
   <strong>GeoIP not configured.</strong> Country lookup uses ip-api.com (rate-limited). For better reliability, run <code>/etc/fail2ban/scripts/setup-ip2location.sh</code> as root. Use "Update IP2Location DB" in the Settings tab to refresh after setup.
@@ -1362,6 +1382,12 @@ document.addEventListener('DOMContentLoaded', function() {
       document.body.appendChild(backdrop);
       document.body.appendChild(modal);
     }
+    var csfModal = document.getElementById('csf-modal');
+    var csfBackdrop = document.getElementById('csf-modal-backdrop');
+    if (csfModal && csfBackdrop && document.body) {
+      document.body.appendChild(csfBackdrop);
+      document.body.appendChild(csfModal);
+    }
   })();
 
   function closeIpLogModal() {
@@ -1370,9 +1396,122 @@ document.addEventListener('DOMContentLoaded', function() {
     if (m) m.style.display = 'none';
     if (b) b.style.display = 'none';
   }
+  function closeCsfModal() {
+    var m = document.getElementById('csf-modal');
+    var b = document.getElementById('csf-modal-backdrop');
+    if (m) m.style.display = 'none';
+    if (b) b.style.display = 'none';
+  }
   document.addEventListener('click', function(e) {
     if (e.target.closest('.ip-log-modal-close') || e.target.id === 'ip-log-modal-backdrop') {
       closeIpLogModal();
+    }
+    var ipLogCopyBtn = e.target.closest('.ip-log-modal-copy');
+    if (ipLogCopyBtn) {
+      e.preventDefault();
+      var bodyEl = document.getElementById('ip-log-modal-body');
+      var emptyEl = document.getElementById('ip-log-modal-empty');
+      var text = (bodyEl && bodyEl.textContent && bodyEl.style.display !== 'none') ? bodyEl.textContent.trim() : (emptyEl ? emptyEl.textContent : '') || '';
+      if (text && navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function() {
+          var orig = ipLogCopyBtn.innerHTML;
+          ipLogCopyBtn.innerHTML = '<span class="glyphicon glyphicon-ok" aria-hidden="true"></span>';
+          ipLogCopyBtn.title = 'Copied!';
+          ipLogCopyBtn.disabled = true;
+          setTimeout(function() { ipLogCopyBtn.innerHTML = orig; ipLogCopyBtn.title = 'Copy to clipboard'; ipLogCopyBtn.disabled = false; }, 2000);
+        }).catch(function() {
+          var orig = ipLogCopyBtn.innerHTML;
+          ipLogCopyBtn.innerHTML = '<span class="glyphicon glyphicon-remove" aria-hidden="true"></span>';
+          ipLogCopyBtn.title = 'Copy failed';
+          setTimeout(function() { ipLogCopyBtn.innerHTML = '<span class="glyphicon glyphicon-copy" aria-hidden="true"></span>'; ipLogCopyBtn.title = 'Copy to clipboard'; }, 2000);
+        });
+      } else if (text) {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed'; ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          document.execCommand('copy');
+          var orig = ipLogCopyBtn.innerHTML;
+          ipLogCopyBtn.innerHTML = '<span class="glyphicon glyphicon-ok" aria-hidden="true"></span>';
+          ipLogCopyBtn.title = 'Copied!';
+          ipLogCopyBtn.disabled = true;
+          setTimeout(function() { ipLogCopyBtn.innerHTML = orig; ipLogCopyBtn.title = 'Copy to clipboard'; ipLogCopyBtn.disabled = false; }, 2000);
+        } catch (err) {}
+        document.body.removeChild(ta);
+      }
+      return;
+    }
+    if (e.target.closest('.csf-modal-close') || e.target.id === 'csf-modal-backdrop') {
+      closeCsfModal();
+    }
+    var csfCopyBtn = e.target.closest('.csf-modal-copy');
+    if (csfCopyBtn) {
+      e.preventDefault();
+      var bodyEl = document.getElementById('csf-modal-body');
+      var text = bodyEl ? bodyEl.textContent : '';
+      if (text && navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function() {
+          var orig = csfCopyBtn.innerHTML;
+          csfCopyBtn.innerHTML = '<span class="glyphicon glyphicon-ok" aria-hidden="true"></span>';
+          csfCopyBtn.title = 'Copied!';
+          csfCopyBtn.disabled = true;
+          setTimeout(function() { csfCopyBtn.innerHTML = orig; csfCopyBtn.title = 'Copy to clipboard'; csfCopyBtn.disabled = false; }, 2000);
+        }).catch(function() {
+          var orig = csfCopyBtn.innerHTML;
+          csfCopyBtn.innerHTML = '<span class="glyphicon glyphicon-remove" aria-hidden="true"></span>';
+          csfCopyBtn.title = 'Copy failed';
+          setTimeout(function() { csfCopyBtn.innerHTML = '<span class="glyphicon glyphicon-copy" aria-hidden="true"></span>'; csfCopyBtn.title = 'Copy to clipboard'; }, 2000);
+        });
+      } else if (text) {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed'; ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          document.execCommand('copy');
+          var orig = csfCopyBtn.innerHTML;
+          csfCopyBtn.innerHTML = '<span class="glyphicon glyphicon-ok" aria-hidden="true"></span>';
+          csfCopyBtn.title = 'Copied!';
+          csfCopyBtn.disabled = true;
+          setTimeout(function() { csfCopyBtn.innerHTML = orig; csfCopyBtn.title = 'Copy to clipboard'; csfCopyBtn.disabled = false; }, 2000);
+        } catch (err) {}
+        document.body.removeChild(ta);
+      }
+      return;
+    }
+    var csfBtn = e.target.closest('.csf-status-btn');
+    if (csfBtn) {
+      e.preventDefault();
+      var ip = csfBtn.getAttribute('data-ip');
+      if (!ip) return;
+      var modal = document.getElementById('csf-modal');
+      var backdrop = document.getElementById('csf-modal-backdrop');
+      var loadingEl = document.getElementById('csf-modal-loading');
+      var bodyEl = document.getElementById('csf-modal-body');
+      var ipEl = document.getElementById('csf-modal-ip');
+      if (modal && ipEl) {
+        ipEl.textContent = ip;
+        loadingEl.style.display = 'block';
+        bodyEl.style.display = 'none';
+        modal.style.display = 'block';
+        if (backdrop) backdrop.style.display = 'block';
+        fetch(base + '?ajax=csf_grep&ip=' + encodeURIComponent(ip), { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            loadingEl.style.display = 'none';
+            bodyEl.textContent = data.output || '(no output)';
+            bodyEl.style.display = 'block';
+          })
+          .catch(function() {
+            loadingEl.style.display = 'none';
+            bodyEl.textContent = 'Failed to fetch CSF status.';
+            bodyEl.style.display = 'block';
+          });
+      }
+      return;
     }
   });
 
