@@ -1,7 +1,8 @@
 #!/bin/bash
 # Update fail2ban-whm from GitHub release
 # Usage: ./update-from-github.sh <tag>
-#   e.g. ./update-from-github.sh fail2ban-whm-v1.0.0
+#   e.g. ./update-from-github.sh v1.0.1
+# Uses GitHub's auto-generated source archive (archive/refs/tags/<tag>.zip).
 # Run as root.
 
 set -e
