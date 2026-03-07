@@ -5,7 +5,7 @@ Manage fail2ban jails, banned IPs, whitelists, and jail settings from the WHM we
 ## Requirements
 
 - cPanel/WHM server
-- Fail2Ban (installed via `/usr/share/fail2ban/install.sh`)
+- Fail2Ban (installed via `/usr/share/fail2ban/scripts/install.sh`)
 - Root or full reseller privileges
 
 ## Install

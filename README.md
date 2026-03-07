@@ -26,10 +26,10 @@ A complete fail2ban configuration for cPanel/WHM servers that blocks WordPress b
 ```bash
 # Full installation (fail2ban not yet installed)
 cd /root/fail2ban
-./install.sh
+./scripts/install.sh
 
 # Config deploy only (fail2ban already installed)
-/usr/share/fail2ban/update.sh
+/usr/share/fail2ban/scripts/update.sh
 
 # Update from GitHub (e.g. after pushing a new tag)
 /usr/share/fail2ban/scripts/update-from-github.sh v1.0.1

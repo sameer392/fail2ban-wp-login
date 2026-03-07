@@ -2,11 +2,12 @@
 
 ```
 /root/fail2ban/
-├── install.sh              # Full install (packages, config, WHM plugin)
-├── uninstall.sh            # Remove config; --purge for full removal
-├── update.sh               # Deploy config only
-├── status.sh               # Show fail2ban and jail status
-├── update-whitelist.sh     # Regenerate filter ignoreregex from whitelist-ips.conf
+├── install.sh              # Wrapper → scripts/install.sh
+├── uninstall.sh            # Wrapper → scripts/uninstall.sh
+├── update.sh               # Wrapper → scripts/update.sh
+├── status.sh               # Wrapper → scripts/status.sh
+├── update-whitelist.sh     # Wrapper → scripts/update-whitelist.sh
+├── restore-backup.sh       # Wrapper → scripts/restore-backup.sh
 ├── whitelist-ips.conf      # IP/CIDR whitelist (never banned)
 ├── fail2ban-logrotate      # Logrotate config → /etc/logrotate.d/fail2ban
 ├── README.md
@@ -26,6 +27,12 @@
 │   └── loglevel-verbose.conf     # Loglevel override (INFO/WARNING)
 │
 ├── scripts/
+│   ├── install.sh          # Full install (packages, config, WHM plugin)
+│   ├── update.sh           # Deploy config only
+│   ├── uninstall.sh        # Remove config; --purge for full removal
+│   ├── restore-backup.sh   # Restore from backup
+│   ├── status.sh           # Show fail2ban and jail status
+│   ├── update-whitelist.sh # Regenerate filter ignoreregex from whitelist-ips.conf
 │   ├── csf-ban.sh          # CSF ban helper (country-aware)
 │   ├── ignore-countries.conf     # Countries to never ban (e.g. IN)
 │   ├── excluded-domains.conf     # Domains/users excluded from monitoring

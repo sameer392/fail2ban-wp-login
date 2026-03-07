@@ -499,11 +499,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
         $dir = dirname($conf);
         if (is_dir($dir) || @mkdir($dir, 0755, true)) {
             if (file_put_contents($conf, $val) !== false) {
-                if (file_exists('/usr/share/fail2ban/update-whitelist.sh')) {
-                    exec('/usr/share/fail2ban/update-whitelist.sh 2>&1', $out, $ret);
-                    exec('/usr/share/fail2ban/update.sh 2>&1', $out2, $ret2);
+                if (file_exists('/usr/share/fail2ban/scripts/update-whitelist.sh')) {
+                    exec('/usr/share/fail2ban/scripts/update-whitelist.sh 2>&1', $out, $ret);
+                    exec('/usr/share/fail2ban/scripts/update.sh 2>&1', $out2, $ret2);
                 }
-                $msg = 'Whitelist IPs saved' . (file_exists('/usr/share/fail2ban/update.sh') ? ' and deployed.' : '.');
+                $msg = 'Whitelist IPs saved' . (file_exists('/usr/share/fail2ban/scripts/update.sh') ? ' and deployed.' : '.');
             } else {
                 $msg = 'Could not write whitelist-ips.conf';
             }
@@ -611,7 +611,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
             $msg = 'Could not write useragent-keywords.conf';
         }
     } elseif ($action === 'deploy') {
-        exec('/usr/share/fail2ban/update.sh 2>&1', $out, $ret);
+        exec('/usr/share/fail2ban/scripts/update.sh 2>&1', $out, $ret);
         $msg = $ret === 0 ? 'Config deployed and fail2ban restarted.' : 'Deploy failed: ' . implode("\n", $out);
     } elseif ($action === 'unban') {
         $ip = preg_replace('/[^0-9a-fA-F.:]/', '', $_POST['ip'] ?? '');
@@ -711,7 +711,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
             $findtime = (int)($_POST['findtime'] ?? 300);
             $bantime = (int)($_POST['bantime'] ?? 3600);
             if (save_jail_settings($jail, $maxretry, $findtime, $bantime)) {
-                exec('/usr/share/fail2ban/update.sh 2>&1', $out, $ret);
+                exec('/usr/share/fail2ban/scripts/update.sh 2>&1', $out, $ret);
                 $msg = $ret === 0 ? "Jail settings saved and fail2ban restarted." : "Settings saved; deploy failed: " . implode("\n", $out);
             } else {
                 $msg = "Could not write jail config.";
@@ -722,7 +722,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
     } elseif ($action === 'save_loglevel') {
         $level = $_POST['loglevel'] ?? 'WARNING';
         if (save_loglevel($level)) {
-            exec('/usr/share/fail2ban/update.sh 2>&1', $out, $ret);
+            exec('/usr/share/fail2ban/scripts/update.sh 2>&1', $out, $ret);
             $msg = $ret === 0 ? "Log level set to $level and fail2ban restarted." : "Log level saved; restart failed: " . implode("\n", $out);
         } else {
             $msg = "Invalid log level.";
@@ -760,13 +760,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
             $msg = "Could not write email-alerts.conf.";
         }
     } elseif ($action === 'force_redeploy') {
-        $update_script = file_exists('/usr/share/fail2ban/update.sh') ? '/usr/share/fail2ban/update.sh'
-            : (file_exists('/root/fail2ban/update.sh') ? '/root/fail2ban/update.sh' : '');
+        $update_script = file_exists('/usr/share/fail2ban/scripts/update.sh') ? '/usr/share/fail2ban/scripts/update.sh'
+            : (file_exists('/root/fail2ban/scripts/update.sh') ? '/root/fail2ban/scripts/update.sh' : '');
         if ($update_script) {
             exec($update_script . ' 2>&1', $out, $ret);
             $msg = $ret === 0 ? 'Config re-deployed and fail2ban restarted.' : 'Re-deploy failed: ' . implode("\n", $out);
         } else {
-            $msg = 'update.sh not found in /usr/share/fail2ban/ or /root/fail2ban/. Run install.sh first.';
+            $msg = 'update.sh not found in /usr/share/fail2ban/scripts/ or /root/fail2ban/scripts/. Run install.sh first.';
         }
     } elseif ($action === 'do_update') {
         $tag = preg_replace('/[^a-zA-Z0-9_.-]/', '', $_POST['update_tag'] ?? '');
