@@ -480,7 +480,7 @@ $action = $_POST['action'] ?? $_GET['action'] ?? '';
 $current_tab = $_GET['tab'] ?? $_POST['tab'] ?? 'dashboard';
 $valid_tabs = ['dashboard' => 'Dashboard', 'banned' => 'Banned IPs', 'whitelists' => 'Whitelists', 'blacklist' => 'Blacklist', 'notifications' => 'Notifications', 'settings' => 'Settings', 'update' => 'Update'];
 if (!isset($valid_tabs[$current_tab])) $current_tab = 'dashboard';
-$tab_from_action = ['save_ignore_countries' => 'whitelists', 'save_whitelist_ips' => 'whitelists', 'save_blocklist_organizations' => 'blacklist', 'save_blacklist_countries' => 'blacklist', 'save_excluded_domains' => 'whitelists', 'save_email_alerts' => 'notifications', 'save_loglevel' => 'settings', 'deploy' => 'settings', 'force_redeploy' => 'update', 'update_ip2location' => 'settings', 'save_ip2location_token' => 'settings', 'setup_ip2location_asn' => 'settings', 'unban' => 'banned', 'unban_bulk' => 'banned', 'unban_whitelisted' => 'banned', 'save_jail_settings' => 'settings', 'do_update' => 'update'];
+$tab_from_action = ['save_ignore_countries' => 'whitelists', 'save_whitelist_ips' => 'whitelists', 'save_blocklist_organizations' => 'blacklist', 'save_blacklist_countries' => 'blacklist', 'apply_blacklist_countries' => 'blacklist', 'save_excluded_domains' => 'whitelists', 'save_email_alerts' => 'notifications', 'save_loglevel' => 'settings', 'deploy' => 'settings', 'force_redeploy' => 'update', 'update_ip2location' => 'settings', 'save_ip2location_token' => 'settings', 'setup_ip2location_asn' => 'settings', 'unban' => 'banned', 'unban_bulk' => 'banned', 'unban_whitelisted' => 'banned', 'save_jail_settings' => 'settings', 'do_update' => 'update'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
     if ($action === 'save_ignore_countries') {
@@ -537,8 +537,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
         if ((file_exists($conf) && is_writable($conf)) || (!file_exists($conf) && is_dir($dir) && is_writable($dir))) {
             if (file_put_contents($conf, $content) !== false) {
                 if (is_executable('/etc/fail2ban/scripts/apply-blacklist-countries.sh')) {
-                    exec('/etc/fail2ban/scripts/apply-blacklist-countries.sh 2>&1', $out, $ret);
-                    $msg = $ret === 0 ? 'Blacklist countries saved and CSF updated.' : 'Saved; ' . implode(' ', $out);
+                    exec('nohup /etc/fail2ban/scripts/apply-blacklist-countries.sh > /tmp/apply-blacklist.log 2>&1 &');
+                    $msg = 'Blacklist countries saved. Applying to CSF in background (may take 1–2 min).';
                 } else {
                     $msg = 'Blacklist countries saved. Run apply-blacklist-countries.sh to apply.';
                 }
@@ -547,6 +547,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
             }
         } else {
             $msg = 'Could not write to /etc/fail2ban/scripts/';
+        }
+    } elseif ($action === 'apply_blacklist_countries') {
+        if (is_executable('/etc/fail2ban/scripts/apply-blacklist-countries.sh')) {
+            exec('nohup /etc/fail2ban/scripts/apply-blacklist-countries.sh > /tmp/apply-blacklist.log 2>&1 &');
+            $msg = 'Applying to CSF in background (may take 1–2 min). Log: /tmp/apply-blacklist.log';
+        } else {
+            $msg = 'apply-blacklist-countries.sh not found or not executable.';
         }
     } elseif ($action === 'save_excluded_domains') {
         $conf = '/etc/fail2ban/scripts/excluded-domains.conf';
@@ -784,7 +791,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
         header('Content-Type: application/json; charset=utf-8');
         $err = preg_match('/\b(failed|error|could not|invalid)\b/i', $msg);
         $refresh = in_array($action, ['unban', 'unban_bulk', 'unban_whitelisted']);
-        echo json_encode(['ok' => !$err, 'msg' => $msg, 'tab' => $current_tab, 'refresh_banned' => $refresh]);
+        $show_apply_log = in_array($action, ['save_blacklist_countries', 'apply_blacklist_countries']);
+        echo json_encode(['ok' => !$err, 'msg' => $msg, 'tab' => $current_tab, 'refresh_banned' => $refresh, 'show_apply_log' => $show_apply_log]);
         exit;
     }
 }
@@ -819,10 +827,18 @@ if (file_exists($excluded_conf) && is_readable($excluded_conf)) {
     if (preg_match('/EXCLUDED_DOMAINS=(.*)$/m', $ec, $m)) $excluded_domains = trim($m[1]);
 }
 $blacklist_countries_conf = '/etc/fail2ban/scripts/blacklist-countries.conf';
+$csf_conf = '/etc/csf/csf.conf';
 $blacklist_countries = '';
-if (file_exists($blacklist_countries_conf) && is_readable($blacklist_countries_conf)) {
+// Primary: read from CSF csf.conf (actual firewall state). Fallback: plugin blacklist-countries.conf
+if (file_exists($csf_conf) && is_readable($csf_conf)) {
+    $csfc = file_get_contents($csf_conf);
+    if (preg_match('/^CC_DENY = "([^"]*)"/m', $csfc, $m)) {
+        $blacklist_countries = trim($m[1]);
+    }
+}
+if ($blacklist_countries === '' && file_exists($blacklist_countries_conf) && is_readable($blacklist_countries_conf)) {
     $bc2 = file_get_contents($blacklist_countries_conf);
-    if (preg_match('/BLACKLIST_COUNTRIES=(.*)$/m', $bc2, $m)) $blacklist_countries = trim($m[1]);
+    if (preg_match('/BLACKLIST_COUNTRIES=(.*)$/m', $bc2, $m)) $blacklist_countries = trim(preg_replace('/^["\']|["\']$/', '', trim($m[1])));
 }
 $blocklist_conf = '/etc/fail2ban/scripts/blocklist-organizations.conf';
 $blocked_organizations = '';
@@ -961,6 +977,20 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'csf_grep' && isset($_GET['ip'])) 
         $output = $ip ? 'CSF not found.' : 'Invalid IP.';
     }
     echo json_encode(['ok' => $ok, 'ip' => $ip, 'output' => $output]);
+    exit;
+}
+
+// AJAX: apply blacklist log (real-time reference)
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'apply_blacklist_log') {
+    header('Content-Type: application/json; charset=utf-8');
+    $log_path = '/tmp/apply-blacklist.log';
+    $content = '';
+    $mtime = 0;
+    if (file_exists($log_path) && is_readable($log_path)) {
+        $content = file_get_contents($log_path);
+        $mtime = filemtime($log_path);
+    }
+    echo json_encode(['ok' => true, 'content' => $content, 'mtime' => $mtime]);
     exit;
 }
 
@@ -1252,7 +1282,7 @@ if ($home_url === '//' || $home_url === './') $home_url = '../../';
 <div class="panel panel-default" style="max-width:600px;margin-bottom:20px;">
   <div class="panel-heading">Blacklist Countries</div>
   <div class="panel-body">
-    <p class="text-muted">IPs from these countries are blocked at the firewall (CSF CC_DENY). All traffic from these countries is denied before reaching the server.</p>
+    <p class="text-muted">IPs from these countries are blocked at the firewall (CSF CC_DENY). All traffic from these countries is denied before reaching the server. Display reads from csf.conf if present, else from plugin config.</p>
     <form method="post">
       <input type="hidden" name="action" value="save_blacklist_countries">
       <input type="hidden" name="tab" value="blacklist">
@@ -1261,7 +1291,13 @@ if ($home_url === '//' || $home_url === './') $home_url = '../../';
         <input type="text" name="blacklist_countries" value="<?php echo htmlspecialchars($blacklist_countries); ?>" class="form-control" placeholder="CN,RU,NK" style="max-width:400px;">
       </div>
       <button type="submit" class="btn btn-primary btn-sm">Save &amp; Apply</button>
+      <button type="submit" name="action" value="apply_blacklist_countries" class="btn btn-default btn-sm" style="margin-left:8px;" title="Sync blacklist-countries.conf to CSF and run csf -r">Apply to CSF</button>
     </form>
+    <div id="apply-blacklist-log-section" class="form-group" style="margin-top:15px;display:none;">
+      <label>Apply log <small class="text-muted">(real-time)</small></label>
+      <pre id="apply-blacklist-log-content" class="form-control" style="height:120px;font-size:11px;overflow:auto;white-space:pre-wrap;word-wrap:break-word;background:#1e1e1e;color:#d4d4d4;">— No log yet —</pre>
+      <button type="button" class="btn btn-default btn-xs" id="apply-blacklist-log-refresh" title="Refresh log">Refresh</button>
+    </div>
   </div>
 </div>
 <div class="panel panel-default" style="max-width:600px;">
@@ -1642,6 +1678,42 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(function() { el.style.display = 'none'; }, 5000);
   }
 
+  var applyLogPollTimer = null;
+  var applyLogPollUntil = 0;
+  function fetchApplyBlacklistLog(cb) {
+    fetch(base + '?ajax=apply_blacklist_log', { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var el = document.getElementById('apply-blacklist-log-content');
+        if (el) {
+          el.textContent = (data.content && data.content.trim()) ? data.content : '— No log yet —';
+          el.scrollTop = el.scrollHeight;
+        }
+        if (typeof cb === 'function') cb(data);
+      })
+      .catch(function() {
+        var el = document.getElementById('apply-blacklist-log-content');
+        if (el) el.textContent = '— Failed to fetch log —';
+      });
+  }
+  function showApplyBlacklistLog(startPolling) {
+    var section = document.getElementById('apply-blacklist-log-section');
+    if (!section) return;
+    section.style.display = 'block';
+    fetchApplyBlacklistLog();
+    if (applyLogPollTimer) clearInterval(applyLogPollTimer);
+    if (startPolling) {
+      applyLogPollUntil = Date.now() + 90000;
+      applyLogPollTimer = setInterval(function() {
+        if (Date.now() > applyLogPollUntil) { clearInterval(applyLogPollTimer); applyLogPollTimer = null; return; }
+        fetchApplyBlacklistLog();
+      }, 2000);
+    }
+  }
+  document.getElementById('apply-blacklist-log-refresh') && document.getElementById('apply-blacklist-log-refresh').addEventListener('click', function() {
+    fetchApplyBlacklistLog();
+  });
+
   var bannedPageState = { page: 1, search: '', jail_filter: 'all' };
 
   function loadBannedIpsMerged(page, search, jailFilter, onDone) {
@@ -1856,6 +1928,7 @@ document.addEventListener('DOMContentLoaded', function() {
       .then(function(data) {
         showMsg(data.msg || 'Done.', !data.ok);
         if (data.refresh_banned) refreshBannedIps();
+        if (data.show_apply_log) { showApplyBlacklistLog(true); }
         if (isUpdate && data.ok) { window.location.href = base + '?tab=update'; return; }
       })
       .catch(function() {
