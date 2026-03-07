@@ -36,7 +36,7 @@ echo
 BACKUP_DIR="/etc/fail2ban/backups"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 
-echo "[1/6] Backing up current config..."
+echo "[1/5] Backing up current config..."
 mkdir -p "$BACKUP_DIR"
 BKP="$BACKUP_DIR/$TIMESTAMP"
 mkdir -p "$BKP/filter.d" "$BKP/jail.d" "$BKP/fail2ban.d" "$BKP/scripts"
@@ -49,7 +49,7 @@ done
 mkdir -p "$BKP/action.d"
 [ -f /etc/fail2ban/action.d/csf-domain.conf ] && cp -a /etc/fail2ban/action.d/csf-domain.conf "$BKP/action.d/"
 [ -f /etc/fail2ban/fail2ban.d/loglevel-verbose.conf ] && cp -a /etc/fail2ban/fail2ban.d/loglevel-verbose.conf "$BKP/fail2ban.d/"
-for f in csf-ban.sh ignore-countries.conf blocklist-organizations.conf excluded-domains.conf blacklist-countries.conf setup-ip2location.sh setup-ip2location-asn.sh update-ip2location.sh; do
+for f in csf-ban.sh ignore-countries.conf blocklist-organizations.conf excluded-domains.conf setup-ip2location.sh setup-ip2location-asn.sh update-ip2location.sh; do
    [ -f "/etc/fail2ban/scripts/$f" ] && cp -a "/etc/fail2ban/scripts/$f" "$BKP/scripts/"
 done
 [ -f /etc/fail2ban/jail.d/99-domlog-logpath.conf ] && cp -a /etc/fail2ban/jail.d/99-domlog-logpath.conf "$BKP/jail.d/" 2>/dev/null || true
@@ -74,7 +74,7 @@ if [ "$CONFIG_DIR" != "$INSTALL_DIR" ] && [ -d "$CONFIG_DIR" ]; then
    chmod +x "$INSTALL_DIR/scripts"/*.sh 2>/dev/null || true
 fi
 
-echo "[2/6] Deploying config to /etc/fail2ban/..."
+echo "[2/5] Deploying config to /etc/fail2ban/..."
 cp -f "$CONFIG_DIR/filter.d/"*.conf /etc/fail2ban/filter.d/
 cp -f "$CONFIG_DIR/jail.d/"*.conf /etc/fail2ban/jail.d/
 [ -f "$CONFIG_DIR/action.d/csf-domain.conf" ] && cp -f "$CONFIG_DIR/action.d/csf-domain.conf" /etc/fail2ban/action.d/
@@ -89,19 +89,14 @@ mkdir -p /etc/fail2ban/scripts
 [ -f "$CONFIG_DIR/scripts/update-useragent-jails.sh" ] && cp -f "$CONFIG_DIR/scripts/update-useragent-jails.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/update-useragent-jails.sh
 [ -f "$CONFIG_DIR/scripts/update-from-github.sh" ] && cp -f "$CONFIG_DIR/scripts/update-from-github.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/update-from-github.sh
 [ -f "$CONFIG_DIR/scripts/excluded-domains.conf" ] && cp -f "$CONFIG_DIR/scripts/excluded-domains.conf" /etc/fail2ban/scripts/
-[ -f "$CONFIG_DIR/scripts/blacklist-countries.conf" ] && cp -f "$CONFIG_DIR/scripts/blacklist-countries.conf" /etc/fail2ban/scripts/
-[ -f "$CONFIG_DIR/scripts/apply-blacklist-countries.sh" ] && cp -f "$CONFIG_DIR/scripts/apply-blacklist-countries.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/apply-blacklist-countries.sh
 [ -f "$CONFIG_DIR/scripts/generate-logpath.sh" ] && cp -f "$CONFIG_DIR/scripts/generate-logpath.sh" /etc/fail2ban/scripts/ && chmod +x /etc/fail2ban/scripts/generate-logpath.sh
 [ -f "$CONFIG_DIR/fail2ban-logrotate" ] && cp -f "$CONFIG_DIR/fail2ban-logrotate" /etc/logrotate.d/fail2ban
 echo "      Config deployed."
 
-echo "[3/6] Generating logpath (excluded domains)..."
+echo "[3/5] Generating logpath (excluded domains)..."
 [ -x /etc/fail2ban/scripts/generate-logpath.sh ] && /etc/fail2ban/scripts/generate-logpath.sh || true
 
-echo "[4/6] Applying blacklist countries (CSF CC_DENY)..."
-[ -x /etc/fail2ban/scripts/apply-blacklist-countries.sh ] && /etc/fail2ban/scripts/apply-blacklist-countries.sh || true
-
-echo "[5/6] Updating WHM plugin..."
+echo "[4/5] Updating WHM plugin..."
 # Use SCRIPT_DIR so running ./update.sh from source (e.g. /root/fail2ban) deploys latest plugin files
 WHM_PLUGIN_DIR="$SCRIPT_DIR/whm-plugin"
 if [ -x "$WHM_PLUGIN_DIR/install-whm-plugin.sh" ] && [ -f "$WHM_PLUGIN_DIR/plugin/index.php" ]; then
@@ -121,7 +116,7 @@ else
    fi
 fi
 
-echo "[6/6] Restarting fail2ban..."
+echo "[5/5] Restarting fail2ban..."
 systemctl restart fail2ban
 # Wait for fail2ban socket to be ready (avoid "Failed to access socket" on quick re-runs)
 for i in {1..10}; do

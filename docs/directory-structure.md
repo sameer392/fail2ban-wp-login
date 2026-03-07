@@ -29,9 +29,7 @@
 │   ├── csf-ban.sh          # CSF ban helper (country-aware)
 │   ├── ignore-countries.conf     # Countries to never ban (e.g. IN)
 │   ├── excluded-domains.conf     # Domains/users excluded from monitoring
-│   ├── blacklist-countries.conf  # Countries to block at firewall (CSF CC_DENY)
 │   ├── generate-logpath.sh       # Builds logpath excluding domains/users
-│   ├── apply-blacklist-countries.sh  # Applies blacklist to CSF CC_DENY
 │   ├── setup-ip2location.sh      # One-time IP2Location setup
 │   ├── update-ip2location.sh     # Cron: weekly DB update
 │   └── update-from-github.sh     # Update from GitHub by tag (e.g. v1.0.1)

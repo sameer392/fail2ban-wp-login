@@ -480,7 +480,7 @@ $action = $_POST['action'] ?? $_GET['action'] ?? '';
 $current_tab = $_GET['tab'] ?? $_POST['tab'] ?? 'dashboard';
 $valid_tabs = ['dashboard' => 'Dashboard', 'banned' => 'Banned IPs', 'whitelists' => 'Whitelists', 'blacklist' => 'Blacklist', 'notifications' => 'Notifications', 'settings' => 'Settings', 'update' => 'Update'];
 if (!isset($valid_tabs[$current_tab])) $current_tab = 'dashboard';
-$tab_from_action = ['save_ignore_countries' => 'whitelists', 'save_whitelist_ips' => 'whitelists', 'save_blocklist_organizations' => 'blacklist', 'save_blacklist_countries' => 'blacklist', 'apply_blacklist_countries' => 'blacklist', 'save_excluded_domains' => 'whitelists', 'save_email_alerts' => 'notifications', 'save_loglevel' => 'settings', 'deploy' => 'settings', 'force_redeploy' => 'update', 'update_ip2location' => 'settings', 'save_ip2location_token' => 'settings', 'setup_ip2location_asn' => 'settings', 'unban' => 'banned', 'unban_bulk' => 'banned', 'unban_whitelisted' => 'banned', 'save_jail_settings' => 'settings', 'do_update' => 'update'];
+$tab_from_action = ['save_ignore_countries' => 'whitelists', 'save_whitelist_ips' => 'whitelists', 'save_blocklist_organizations' => 'blacklist', 'save_blacklist_countries' => 'blacklist', 'save_excluded_domains' => 'whitelists', 'save_email_alerts' => 'notifications', 'save_loglevel' => 'settings', 'deploy' => 'settings', 'force_redeploy' => 'update', 'update_ip2location' => 'settings', 'save_ip2location_token' => 'settings', 'setup_ip2location_asn' => 'settings', 'unban' => 'banned', 'unban_bulk' => 'banned', 'unban_whitelisted' => 'banned', 'save_jail_settings' => 'settings', 'do_update' => 'update'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
     if ($action === 'save_ignore_countries') {
@@ -529,43 +529,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
             $msg = 'Could not write to /etc/fail2ban/scripts/';
         }
     } elseif ($action === 'save_blacklist_countries') {
-        $conf = '/etc/fail2ban/scripts/blacklist-countries.conf';
-        $val = trim(preg_replace('/[^A-Za-z,]/', '', $_POST['blacklist_countries'] ?? ''));
-        $content = "# Countries to always block at firewall (CSF CC_DENY)\n# ISO codes, comma-separated. Example: CN,RU,NK\nBLACKLIST_COUNTRIES=$val\n";
-        $dir = dirname($conf);
-        if (!is_dir($dir)) @mkdir($dir, 0755, true);
-        if ((file_exists($conf) && is_writable($conf)) || (!file_exists($conf) && is_dir($dir) && is_writable($dir))) {
-            if (file_put_contents($conf, $content) !== false) {
-                $apply_script = is_executable('/etc/fail2ban/scripts/apply-blacklist-countries.sh') ? '/etc/fail2ban/scripts/apply-blacklist-countries.sh' : (is_executable('/usr/share/fail2ban/scripts/apply-blacklist-countries.sh') ? '/usr/share/fail2ban/scripts/apply-blacklist-countries.sh' : '');
-                if ($apply_script) {
+        $csf_conf = '/etc/csf/csf.conf';
+        if (!file_exists($csf_conf) || !is_readable($csf_conf) || !is_writable($csf_conf)) {
+            $msg = 'CSF configuration not found or not writable. Ensure CSF is installed and /etc/csf/csf.conf exists.';
+        } else {
+            $val = trim(preg_replace('/[^A-Za-z,]/', '', $_POST['blacklist_countries'] ?? ''));
+            $value = $val; // sanitized
+            $content = file_get_contents($csf_conf);
+            if (preg_match('/^CC_DENY = /m', $content)) {
+                $new_line = 'CC_DENY = "' . $value . '"';
+                $content = preg_replace('/^CC_DENY = .*$/m', $new_line, $content, 1);
+                if (file_put_contents($csf_conf, $content) !== false) {
                     @set_time_limit(180);
                     $out = [];
-                    exec($apply_script . ' 2>&1', $out, $ret);
-                    $log_content = implode("\n", $out);
+                    exec('csf -r 2>&1', $out, $ret);
+                    $log_content = 'CC_DENY updated. Countries blocked: ' . ($value ?: 'none') . "\n" . implode("\n", $out);
                     @file_put_contents('/tmp/apply-blacklist.log', $log_content);
-                    $msg = $ret === 0 ? 'Blacklist countries saved and CSF updated.' : 'Saved; ' . $log_content;
+                    $msg = $ret === 0 ? 'Blacklist countries saved and CSF restarted.' : 'Saved; csf -r: ' . implode(' ', $out);
                     $GLOBALS['_apply_log_output'] = $log_content;
                 } else {
-                    $msg = 'Blacklist countries saved. Run apply-blacklist-countries.sh to apply.';
+                    $msg = 'Could not write to /etc/csf/csf.conf';
                 }
             } else {
-                $msg = 'Could not write blacklist-countries.conf';
+                $msg = 'CC_DENY not found in /etc/csf/csf.conf';
             }
-        } else {
-            $msg = 'Could not write to /etc/fail2ban/scripts/';
-        }
-    } elseif ($action === 'apply_blacklist_countries') {
-        $apply_script = is_executable('/etc/fail2ban/scripts/apply-blacklist-countries.sh') ? '/etc/fail2ban/scripts/apply-blacklist-countries.sh' : (is_executable('/usr/share/fail2ban/scripts/apply-blacklist-countries.sh') ? '/usr/share/fail2ban/scripts/apply-blacklist-countries.sh' : '');
-        if ($apply_script) {
-            @set_time_limit(180);
-            $out = [];
-            exec($apply_script . ' 2>&1', $out, $ret);
-            $log_content = implode("\n", $out);
-            @file_put_contents('/tmp/apply-blacklist.log', $log_content);
-            $msg = $ret === 0 ? 'Blacklist countries applied to CSF.' : implode(' ', $out);
-            $GLOBALS['_apply_log_output'] = $log_content;
-        } else {
-            $msg = 'apply-blacklist-countries.sh not found or not executable.';
         }
     } elseif ($action === 'save_excluded_domains') {
         $conf = '/etc/fail2ban/scripts/excluded-domains.conf';
@@ -803,7 +790,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
         header('Content-Type: application/json; charset=utf-8');
         $err = preg_match('/\b(failed|error|could not|invalid)\b/i', $msg);
         $refresh = in_array($action, ['unban', 'unban_bulk', 'unban_whitelisted']);
-        $show_apply_log = in_array($action, ['save_blacklist_countries', 'apply_blacklist_countries']);
+        $show_apply_log = ($action === 'save_blacklist_countries');
         $apply_log = isset($GLOBALS['_apply_log_output']) ? $GLOBALS['_apply_log_output'] : '';
         echo json_encode(['ok' => !$err, 'msg' => $msg, 'tab' => $current_tab, 'refresh_banned' => $refresh, 'show_apply_log' => $show_apply_log, 'apply_log' => $apply_log]);
         exit;
@@ -839,19 +826,14 @@ if (file_exists($excluded_conf) && is_readable($excluded_conf)) {
     if (preg_match('/EXCLUDED_USERS=(.*)$/m', $ec, $m)) $excluded_users = trim($m[1]);
     if (preg_match('/EXCLUDED_DOMAINS=(.*)$/m', $ec, $m)) $excluded_domains = trim($m[1]);
 }
-$blacklist_countries_conf = '/etc/fail2ban/scripts/blacklist-countries.conf';
 $csf_conf = '/etc/csf/csf.conf';
+$csf_conf_ok = file_exists($csf_conf) && is_readable($csf_conf);
 $blacklist_countries = '';
-// Primary: read from CSF csf.conf (actual firewall state). Fallback: plugin blacklist-countries.conf
-if (file_exists($csf_conf) && is_readable($csf_conf)) {
+if ($csf_conf_ok) {
     $csfc = file_get_contents($csf_conf);
     if (preg_match('/^CC_DENY = "([^"]*)"/m', $csfc, $m)) {
         $blacklist_countries = trim($m[1]);
     }
-}
-if ($blacklist_countries === '' && file_exists($blacklist_countries_conf) && is_readable($blacklist_countries_conf)) {
-    $bc2 = file_get_contents($blacklist_countries_conf);
-    if (preg_match('/BLACKLIST_COUNTRIES=(.*)$/m', $bc2, $m)) $blacklist_countries = trim(preg_replace('/^["\']|["\']$/', '', trim($m[1])));
 }
 $blocklist_conf = '/etc/fail2ban/scripts/blocklist-organizations.conf';
 $blocked_organizations = '';
@@ -1295,7 +1277,10 @@ if ($home_url === '//' || $home_url === './') $home_url = '../../';
 <div class="panel panel-default" style="max-width:600px;margin-bottom:20px;">
   <div class="panel-heading">Blacklist Countries</div>
   <div class="panel-body">
-    <p class="text-muted">IPs from these countries are blocked at the firewall (CSF CC_DENY). All traffic from these countries is denied before reaching the server. Display reads from csf.conf if present, else from plugin config.</p>
+    <?php if (!$csf_conf_ok): ?>
+    <div class="alert alert-warning">CSF configuration not found. Ensure CSF is installed and <code>/etc/csf/csf.conf</code> exists.</div>
+    <?php else: ?>
+    <p class="text-muted">IPs from these countries are blocked at the firewall (CSF CC_DENY). Reads from and writes directly to <code>/etc/csf/csf.conf</code>.</p>
     <form method="post">
       <input type="hidden" name="action" value="save_blacklist_countries">
       <input type="hidden" name="tab" value="blacklist">
@@ -1303,14 +1288,14 @@ if ($home_url === '//' || $home_url === './') $home_url = '../../';
         <label>Blacklist countries (comma-separated ISO codes)</label>
         <input type="text" name="blacklist_countries" value="<?php echo htmlspecialchars($blacklist_countries); ?>" class="form-control" placeholder="CN,RU,NK" style="max-width:400px;">
       </div>
-      <button type="submit" class="btn btn-primary btn-sm">Save &amp; Apply</button>
-      <button type="submit" name="action" value="apply_blacklist_countries" class="btn btn-default btn-sm" style="margin-left:8px;" title="Sync blacklist-countries.conf to CSF and run csf -r">Apply to CSF</button>
+      <button type="submit" class="btn btn-primary btn-sm">Save</button>
     </form>
     <div id="apply-blacklist-log-section" class="form-group" style="margin-top:15px;display:none;">
-      <label>Apply log <small class="text-muted">(real-time)</small></label>
+      <label>Apply log</label>
       <pre id="apply-blacklist-log-content" class="form-control" style="height:120px;font-size:11px;overflow:auto;white-space:pre-wrap;word-wrap:break-word;background:#1e1e1e;color:#d4d4d4;">— No log yet —</pre>
       <button type="button" class="btn btn-default btn-xs" id="apply-blacklist-log-refresh" title="Refresh log">Refresh</button>
     </div>
+    <?php endif; ?>
   </div>
 </div>
 <div class="panel panel-default" style="max-width:600px;">
